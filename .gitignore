@@ -1,0 +1,8 @@
+Voices/**
+**/*.bk
+**/.DS_Store
+.vscode/
+**/*.log
+**/__pycache__/
+configure.json
+tmp/
