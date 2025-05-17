@@ -134,14 +134,15 @@ private:
         const char *type = doc["type"] | "";
         if (strcmp(type, "humidity_temperature") == 0) {
           std::pair<float, float> th = instance->dht22->get_temperature_humidity();
-          JsonDocument doc;
-          doc["from"] = "esp32_sensors";
-          doc["to"] = "AI_server";
-          doc["type"] = "humidity_temperature";
-          doc["temperature"] = th.first;
-          doc["humidity"] = th.second;
+          JsonDocument doc_resp;
+          doc_resp["from"] = "esp32_sensors";
+          doc_resp["to"] = "AI_server";
+          doc_resp["id"] = doc["id"];
+          doc_resp["type"] = "humidity_temperature";
+          doc_resp["temperature"] = th.first;
+          doc_resp["humidity"] = th.second;
           char output[256];
-          serializeJson(doc, output);
+          serializeJson(doc_resp, output);
           instance->ws.text(client->id(), output);
         }
       }
