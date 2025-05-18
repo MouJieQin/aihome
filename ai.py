@@ -2,23 +2,25 @@ import azure.cognitiveservices.speech as speechsdk
 from concurrent.futures import ThreadPoolExecutor
 from time import sleep
 import asyncio
-import websockets
 import json
 import datetime
 import sys
+import os
+import logging
 from typing import *
 from libs.bedroom_light import Light_bedroom
 from libs.bedroom_climate import Climate_bedroom
 from libs.websocket_client import Websocket_client_esp32
+from libs.speaker import Speaker
 
+os.chdir(os.path.dirname(__file__))
 
-async def connect_to_server():
-    uri = "ws://192.168.10.18/ws"
-
-
-# # 运行事件循环连接到WebSocket服务器
-# asyncio.get_event_loop().run_until_complete(connect_to_server())
-# exit(0)
+logging.basicConfig(
+    filename="./run.log",
+    format="%(asctime)s - %(name)s - %(levelname)s -%(module)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=20,
+)
 
 
 class AI_Server:
@@ -48,6 +50,9 @@ class AI_Server:
             if keyword not in self.keyword_keep_alive_list:
                 items["recognizer"].recognize_once_async(items["model"])
         self.response_time_counter = self.response_timeout
+        print("start")
+        self.speaker.play_start_record()
+        print("end")
 
     def stop_all_keyword_recogizers(self):
         for keyword, items in self.keyword_recognizers.items():
@@ -64,6 +69,7 @@ class AI_Server:
                 for keyword, items in self.keyword_recognizers.items():
                     if keyword not in self.keyword_keep_alive_list:
                         items["recognizer"].stop_recognition_async().get()
+                self.speaker.play_end_record()
             await asyncio.sleep(interval)
 
     def __init__(self, configure_path: str):
@@ -74,8 +80,8 @@ class AI_Server:
         self.esp32_config = self.configure["esp32"]
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
-        # self.turn_on_light_keyword_recognizer.stop_recognition_async().get()
-        self.response_timeout = 10
+        self.speaker = Speaker()
+        self.response_timeout = 5
         self.response_time_counter = 0
         self.keyword_keep_alive_list = ["ai_name", "turn_on_light"]
         self.keyword_recognizers = {
@@ -167,6 +173,7 @@ class AI_Server:
                 "recognizer": None,
                 "recognized_keyword_cb": None,
                 "canceled_keyword_cb": None,
+                # "callback_recognized": lambda: self.climate_bedroom.set_humidity(50),
                 "callback_recognized": self.climate_bedroom.turn_on_climate,
             },
             "turn_off_cliamte": {
@@ -223,7 +230,7 @@ class AI_Server:
                 print(f'{result["temperature"]},{result["humidity"]}')
             else:
                 print("Timeout...")
-            await asyncio.sleep(5)
+            await asyncio.sleep(10)
 
     # 同步任务示例 - 在单独线程中运行
     def sync_task(self, stop_event: asyncio.Event):
@@ -248,7 +255,7 @@ class AI_Server:
             self.stop_keyword_recogizers(),
             self.ws_client_esp32.receive_messages(),  # WebSocket消息接收任务
             self.ws_client_esp32.heartbeat_task(),  # 心跳任务
-            loop.run_in_executor(executor, self.sync_task, stop_event),  # 同步任务
+            # loop.run_in_executor(executor, self.sync_task, stop_event),  # 同步任务
         ]
 
         # 运行所有任务，直到其中一个完成或被取消

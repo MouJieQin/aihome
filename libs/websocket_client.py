@@ -4,7 +4,6 @@ import datetime
 import json
 from typing import *
 
-
 # WebSocket客户端类 - 处理WebSocket连接和消息收发
 class Websocket_client_esp32:
     def __init__(self, uri):
@@ -41,7 +40,7 @@ class Websocket_client_esp32:
             return
         try:
             # while True:
-                # message = await self.websocket.recv()
+            # message = await self.websocket.recv()
             async for message in self.websocket:
                 print(f"收到消息: {message}")
                 try:
@@ -95,6 +94,8 @@ class Websocket_client_esp32:
     # 异步任务示例 - 定期执行的心跳任务
     async def heartbeat_task(self, interval=5):
         """定期向WebSocket服务器发送心跳消息"""
+        message = {"message": "heartbeat"}
+        heartbeat_mess = json.dumps(message, ensure_ascii=False)
         while True:
-            await self.send_message("heartbeat")
+            await self.send_message(heartbeat_mess)
             await asyncio.sleep(interval)
