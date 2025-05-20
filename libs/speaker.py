@@ -41,7 +41,6 @@ class Speaker:
                 else:
                     sound = self.audio_cache[vfile]
 
-                print("playing")
                 # 播放音频并获取 Channel 对象
                 channel = sound.play()
 

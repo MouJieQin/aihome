@@ -11,12 +11,15 @@ class Light_bedroom:
         self.url_trun_off_light = self.api_url + "/light/turn_off"
         self.url_trun_on_light = self.api_url + "/light/turn_on"
         self.url_number_fan_speed = self.api_url + "/number/set_value"
+        self.url_turn_off_fan = self.api_url + "/fan/turn_off"
         self.headers = {
             "Authorization": "Bearer " + self.ha_config["long_lived_access_token"],
             "content-type": "application/json",
         }
-        self.light_entity_id = self.light_config["entity_id_light"]
-        self.fan_speed_entity_id = self.light_config["entity_id_fan_speed"]
+        self.entity_id_config = self.light_config["entity_id"]
+        self.light_entity_id = self.entity_id_config["light"]
+        self.fan_entity_id = self.entity_id_config["fan"]
+        self.fan_speed_entity_id = self.entity_id_config["fan_speed"]
 
     def turn_on_light(self):
         json = {"entity_id": self.light_entity_id}
@@ -70,6 +73,11 @@ class Light_bedroom:
             headers=self.headers,
             json=json_light_mode_reception,
         )
+        print(response.text)
+
+    def turn_off_fan(self):
+        json = {"entity_id": self.fan_entity_id}
+        response = post(self.url_turn_off_fan, headers=self.headers, json=json)
         print(response.text)
 
     def adjust_fan_speed(self, value: int):

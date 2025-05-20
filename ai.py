@@ -1,9 +1,13 @@
 import azure.cognitiveservices.speech as speechsdk
 from concurrent.futures import ThreadPoolExecutor
+import pvporcupine
+import pyaudio
+import struct
 from time import sleep
 import asyncio
 import json
 import datetime
+import threading
 import sys
 import os
 import logging
@@ -24,6 +28,9 @@ logging.basicConfig(
 
 
 class AI_Server:
+    response_timeout = 10
+    response_time_counter = 0
+
     def _keyword_recognizers_setup(self):
         for keyword, items in self.keyword_recognizers.items():
             items["model"] = speechsdk.KeywordRecognitionModel(items["model_file"])
@@ -39,20 +46,18 @@ class AI_Server:
                 items["keyword"]
             )
             items["recognizer"].canceled.connect(items["recognized_keyword_cb"])
-        for key in self.keyword_keep_alive_list:
-            keyword_recognize = self.keyword_recognizers[key]
-            keyword_recognize["recognizer"].recognize_once_async(
-                keyword_recognize["model"]
-            )
+        # for key in self.keyword_keep_alive_list:
+        #     keyword_recognize = self.keyword_recognizers[key]
+        #     keyword_recognize["recognizer"].recognize_once_async(
+        #         keyword_recognize["model"]
+        #     )
 
     def activate_all_keyword_recogizers(self):
         for keyword, items in self.keyword_recognizers.items():
             if keyword not in self.keyword_keep_alive_list:
                 items["recognizer"].recognize_once_async(items["model"])
-        self.response_time_counter = self.response_timeout
-        print("start")
+        AI_Server.response_time_counter = AI_Server.response_timeout
         self.speaker.play_start_record()
-        print("end")
 
     def stop_all_keyword_recogizers(self):
         for keyword, items in self.keyword_recognizers.items():
@@ -61,10 +66,13 @@ class AI_Server:
     async def stop_keyword_recogizers(self):
         interval = 1
         while True:
-            if self.response_time_counter > 0:
-                while self.response_time_counter > 0:
-                    self.response_time_counter -= interval
-                    print("self.response_time_counter:", self.response_time_counter)
+            if AI_Server.response_time_counter > 0:
+                while AI_Server.response_time_counter > 0:
+                    AI_Server.response_time_counter -= interval
+                    print(
+                        "AI_Server.response_time_counter:",
+                        AI_Server.response_time_counter,
+                    )
                     await asyncio.sleep(interval)
                 for keyword, items in self.keyword_recognizers.items():
                     if keyword not in self.keyword_keep_alive_list:
@@ -72,18 +80,66 @@ class AI_Server:
                 self.speaker.play_end_record()
             await asyncio.sleep(interval)
 
+    def __init_porcupine(self):
+        config_porcupine = self.configure["porcupine"]
+        self.porcupine = pvporcupine.create(
+            access_key=config_porcupine["access_key"],
+            model_path=config_porcupine["model_path"],
+            keyword_paths=[config_porcupine["keyword_paths"]],
+        )
+        self.pa = pyaudio.PyAudio()
+        self.audio_stream = self.pa.open(
+            rate=self.porcupine.sample_rate,
+            channels=1,
+            format=pyaudio.paInt16,
+            input=True,
+            frames_per_buffer=self.porcupine.frame_length,
+        )
+        self._ai_awake()
+
+    def _ai_awake(self) -> threading.Thread:
+        def run_ai_awake():
+            while True:
+                # 读取音频数据
+                pcm = self.audio_stream.read(
+                    self.porcupine.frame_length, exception_on_overflow=False
+                )
+                pcm = struct.unpack_from("h" * self.porcupine.frame_length, pcm)
+                # 处理音频并检测唤醒词
+                result = self.porcupine.process(pcm)
+                # 如果检测到唤醒词
+                if result >= 0:
+                    print(f"检测到唤醒词: あすな")
+                    self.activate_all_keyword_recogizers()
+                # sleep(0.1)
+            # await asyncio.sleep(0.01)
+
+        thread = threading.Thread(target=run_ai_awake)
+        thread.daemon = True
+        thread.start()
+        return thread
+
+    def _close_porcupine(self):
+        if self.porcupine is not None:
+            self.porcupine.delete()
+
+        if self.audio_stream is not None:
+            self.audio_stream.close()
+
+        if self.pa is not None:
+            self.pa.terminate()
+
     def __init__(self, configure_path: str):
         with open(configure_path, mode="r", encoding="utf-8") as f:
             self.configure = json.load(f)
+        self.__init_porcupine()
         self.light_bedroom = Light_bedroom(self.configure)
         self.climate_bedroom = Climate_bedroom(self.configure)
         self.esp32_config = self.configure["esp32"]
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
         self.speaker = Speaker()
-        self.response_timeout = 5
-        self.response_time_counter = 0
-        self.keyword_keep_alive_list = ["ai_name", "turn_on_light"]
+        self.keyword_keep_alive_list = ["ai_name"]
         self.keyword_recognizers = {
             "turn_on_light": {
                 "keyword": "开灯",
@@ -97,103 +153,78 @@ class AI_Server:
             "turn_off_light": {
                 "keyword": "关灯",
                 "model_file": "./voices/models/5b1c6dc0-7987-4954-896e-9630b6cbcca9.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
                 "callback_recognized": self.light_bedroom.turn_off_light,
+            },
+            "turn_off_fan": {
+                "keyword": "关闭风扇",
+                "model_file": "./voices/models/turn-off-fan.table",
+                "callback_recognized": self.light_bedroom.turn_off_fan,
             },
             "fan_speed_max": {
                 "keyword": "最大风速",
                 "model_file": "./voices/models/8c3db10e-d572-419a-afc7-b47cd0cb6c86.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
                 "callback_recognized": self.light_bedroom.adjust_fan_speed_to_max,
             },
             "fan_speed_fourth": {
                 "keyword": "四级风速",
                 "model_file": "./voices/models/fan-speed-fourth.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
                 "callback_recognized": self.light_bedroom.adjust_fan_speed_to_fourth,
             },
             "fan_speed_one": {
                 "keyword": "一级风速",
                 "model_file": "./voices/models/fan-speed-one.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
                 "callback_recognized": self.light_bedroom.adjust_fan_speed_to_min,
             },
             "light_mode_movie": {
                 "keyword": "影院模式",
                 "model_file": "./voices/models/light-mode-movie.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
                 "callback_recognized": self.light_bedroom.turn_on_light_mode_movie,
             },
             "light_mode_entertainment": {
                 "keyword": "娱乐模式",
                 "model_file": "./voices/models/light-mode-entertainment.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
                 "callback_recognized": self.light_bedroom.turn_on_light_mode_entertainment,
             },
             "light_mode_reception": {
                 "keyword": "会客模式",
                 "model_file": "./voices/models/light-mode-reception.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
                 "callback_recognized": self.light_bedroom.turn_on_light_mode_reception,
             },
             "light_mode_night": {
                 "keyword": "夜灯模式",
                 "model_file": "./voices/models/light-mode-night.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
                 "callback_recognized": self.light_bedroom.turn_on_light_mode_night,
             },
             "turn_on_cliamte": {
                 "keyword": "开启空调",
                 "model_file": "./voices/models/turn-on-climate.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
-                # "callback_recognized": lambda: self.climate_bedroom.set_humidity(50),
                 "callback_recognized": self.climate_bedroom.turn_on_climate,
             },
             "turn_off_cliamte": {
                 "keyword": "关闭空调",
                 "model_file": "./voices/models/turn-off-climate.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
                 "callback_recognized": self.climate_bedroom.turn_off_climate,
             },
-            "ai_name": {
-                "keyword": "千夏",
-                "model_file": "./voices/models/qianxia.table",
-                "model": None,
-                "recognizer": None,
-                "recognized_keyword_cb": None,
-                "canceled_keyword_cb": None,
-                "callback_recognized": self.activate_all_keyword_recogizers,
+            "toggle_fresh_air_mode": {
+                "keyword": "新风模式",
+                "model_file": "./voices/models/fresh-air-climate.table",
+                "callback_recognized": self.climate_bedroom.toggle_fresh_air_mode,
             },
+            "toggle_health_mode": {
+                "keyword": "健康模式",
+                "model_file": "./voices/models/health-mode-climate.table",
+                "callback_recognized": self.climate_bedroom.toggle_health_mode,
+            },
+            "toggle_quiet_mode": {
+                "keyword": "静音模式",
+                "model_file": "./voices/models/quiet-mode-climate.table",
+                "callback_recognized": self.climate_bedroom.toggle_quiet_mode,
+            },
+            # "ai_name": {
+            #     "keyword": "千夏",
+            #     "model_file": "./voices/models/qianxia.table",
+            #     "callback_recognized": self.activate_all_keyword_recogizers,
+            # },
         }
         self._keyword_recognizers_setup()
 
@@ -217,6 +248,7 @@ class AI_Server:
             result = evt.result
             if result.reason == speechsdk.ResultReason.RecognizedKeyword:
                 print("RECOGNIZED KEYWORD: {}".format(result.text))
+                AI_Server.response_time_counter = AI_Server.response_timeout
                 callback()
                 # to recognize keyword again.
                 recognizer.recognize_once_async(keyword_model)
@@ -266,6 +298,7 @@ class AI_Server:
         finally:
             # 清理资源
             await self.ws_client_esp32.close()
+            self._close_porcupine()
             stop_event.set()
             executor.shutdown()
 

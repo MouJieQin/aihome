@@ -15,12 +15,15 @@ class Climate_bedroom:
         }
         self.url_trun_off_climate = self.api_url + "/climate/turn_off"
         self.url_trun_on_climate = self.api_url + "/climate/turn_on"
-        self.url_trun_on_health_mode = self.api_url + "/switch/turn_on"
-        self.url_trun_off_health_mode = self.api_url + "/switch/turn_off"
+        self.url_toggle_switch = self.api_url + "/switch/toggle"
+        self.url_trun_on_switch = self.api_url + "/switch/turn_on"
+        self.url_trun_off_switch = self.api_url + "/switch/turn_off"
         self.url_set_humidity = self.api_url + "/climate/set_humidity"
         self.climate_entity_id = self.climate_config["entity_id"]
         self.entity_id_climate = self.climate_entity_id["climate"]
         self.entity_id_health_mode = self.climate_entity_id["switch_health_mode"]
+        self.entity_id_fresh_air_mode = self.climate_entity_id["switch_fresh_air_mode"]
+        self.entity_id_quiet_mode = self.climate_entity_id["switch_quiet_mode"]
 
     def turn_on_climate(self):
         json = {"entity_id": self.entity_id_climate}
@@ -32,14 +35,29 @@ class Climate_bedroom:
         response = post(self.url_trun_off_climate, headers=self.headers, json=json)
         print(response.text)
 
+    def toggle_fresh_air_mode(self):
+        json = {"entity_id": self.entity_id_fresh_air_mode}
+        response = post(self.url_toggle_switch, headers=self.headers, json=json)
+        print(response.text)
+
+    def toggle_health_mode(self):
+        json = {"entity_id": self.entity_id_health_mode}
+        response = post(self.url_toggle_switch, headers=self.headers, json=json)
+        print(response.text)
+
+    def toggle_quiet_mode(self):
+        json = {"entity_id": self.entity_id_quiet_mode}
+        response = post(self.url_toggle_switch, headers=self.headers, json=json)
+        print(response.text)
+
     def turn_on_health_mode(self):
         json = {"entity_id": self.entity_id_health_mode}
-        response = post(self.url_trun_on_health_mode, headers=self.headers, json=json)
+        response = post(self.url_trun_on_switch, headers=self.headers, json=json)
         print(response.text)
 
     def turn_off_health_mode(self):
         json = {"entity_id": self.entity_id_health_mode}
-        response = post(self.url_trun_off_health_mode, headers=self.headers, json=json)
+        response = post(self.url_trun_off_switch, headers=self.headers, json=json)
         print(response.text)
 
     # def set_humidity(self, humidity: int):
