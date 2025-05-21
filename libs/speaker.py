@@ -94,16 +94,16 @@ class Speaker:
     #         future = asyncio.run_coroutine_threadsafe(
     #             self.play_audio(vfile, is_cache), loop
     #         )
-    #         print("22222")
     #         future.result()  # 阻塞直到完成
-    #         print("3333")
     #     else:
     #         # 否则直接运行事件循环
     #         asyncio.run(self.play_audio(vfile, is_cache))
+
     def play_audio_nonblocking(self, vfile: str, is_cache=False) -> threading.Thread:
         """非阻塞调用异步音频播放，在单独线程中运行"""
 
         def run_async_play():
+            asyncio.run(self.play_audio(vfile, is_cache))
             asyncio.run(self.play_audio(vfile, is_cache))
 
         thread = threading.Thread(target=run_async_play)

@@ -111,8 +111,6 @@ class AI_Server:
                 if result >= 0:
                     print(f"检测到唤醒词: あすな")
                     self.activate_all_keyword_recogizers()
-                # sleep(0.1)
-            # await asyncio.sleep(0.01)
 
         thread = threading.Thread(target=run_ai_awake)
         thread.daemon = True
@@ -198,7 +196,9 @@ class AI_Server:
             "turn_on_cliamte": {
                 "keyword": "开启空调",
                 "model_file": "./voices/models/turn-on-climate.table",
-                "callback_recognized": self.climate_bedroom.turn_on_climate,
+                "callback_recognized": lambda: self.auto_cool_mode(
+                    temperature=25, total_simples=18
+                ),
             },
             "turn_off_cliamte": {
                 "keyword": "关闭空调",
@@ -255,14 +255,44 @@ class AI_Server:
 
         return recognized_keyword_cb
 
-    async def data_generation_task(self):
-        while True:
-            result = await self.ws_client_esp32.get_temperature_humidity()
-            if result:
-                print(f'{result["temperature"]},{result["humidity"]}')
-            else:
-                print("Timeout...")
-            await asyncio.sleep(10)
+    def auto_cool_mode(
+        self,
+        temperature: int = 25,
+        total_simples=3,
+        # total_simples=18,
+    ):
+        # self.climate_bedroom.fast_cool_mode(temperature=temperature)
+        self.light_bedroom.adjust_fan_speed_to_max()
+
+        async def auto_cool_mode_monitor():
+            print("@Start of auto_cool_mode_monitor.")
+            await asyncio.sleep(30)
+            # await asyncio.sleep(180)
+            while True:
+                result = await self.ws_client_esp32.get_statistc_temp_hum(total_simples)
+                if not result:
+                    await asyncio.sleep(10)
+                else:
+                    print(result)
+                    temp_stdev = result["temperature"]["stdev"]
+                    if temp_stdev < 0.1:
+                        print("@Temperature is stabled.")
+                        # self.climate_bedroom.turn_on_health_mode()
+                        # self.climate_bedroom.turn_on_quiet_mode()
+                        self.light_bedroom.adjust_fan_speed_to_min()
+                        break
+                await asyncio.sleep(30)
+                # await asyncio.sleep(60)
+
+        def run_async_play():
+            asyncio.run(auto_cool_mode_monitor())
+
+        thread = threading.Thread(target=run_async_play)
+        thread.daemon = True
+        thread.start()
+        print("@End of auto_cool_mode.")
+        return thread
+        # asyncio.create_task(auto_cool_mode_monitor())
 
     # 同步任务示例 - 在单独线程中运行
     def sync_task(self, stop_event: asyncio.Event):
@@ -283,8 +313,8 @@ class AI_Server:
         loop = asyncio.get_running_loop()
         await self.ws_client_esp32.connect()
         tasks = [
-            self.data_generation_task(),  # 数据生成任务
             self.stop_keyword_recogizers(),
+            self.ws_client_esp32.sample_tem_hum(),  # WebSocket消息接收任务
             self.ws_client_esp32.receive_messages(),  # WebSocket消息接收任务
             self.ws_client_esp32.heartbeat_task(),  # 心跳任务
             # loop.run_in_executor(executor, self.sync_task, stop_event),  # 同步任务

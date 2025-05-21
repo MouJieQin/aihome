@@ -1,4 +1,5 @@
-from requests import post
+from requests import post, get
+import requests
 from typing import *
 
 
@@ -9,6 +10,7 @@ class Climate_bedroom:
         self.light_config = configure["smart_home_appliances"]["light_bedroom"]
         self.ha_url = "http://" + self.ha_config["host"] + ":" + self.ha_config["port"]
         self.api_url = self.ha_url + "/api/services"
+        self.api_states_url = self.ha_url + "/api/states"
         self.headers = {
             "Authorization": "Bearer " + self.ha_config["long_lived_access_token"],
             "content-type": "application/json",
@@ -24,6 +26,17 @@ class Climate_bedroom:
         self.entity_id_health_mode = self.climate_entity_id["switch_health_mode"]
         self.entity_id_fresh_air_mode = self.climate_entity_id["switch_fresh_air_mode"]
         self.entity_id_quiet_mode = self.climate_entity_id["switch_quiet_mode"]
+
+    def fast_cool_mode(self, temperature: int = 25):
+        json = {
+            "entity_id": self.entity_id_climate,
+            "state": "cool",
+            "fan_mode": "high",
+            "preset_mode": "none",
+            "swing_mode": "off",
+        }
+        response = post(self.url_trun_on_climate, headers=self.headers, json=json)
+        print(response.text)
 
     def turn_on_climate(self):
         json = {"entity_id": self.entity_id_climate}
@@ -60,10 +73,16 @@ class Climate_bedroom:
         response = post(self.url_trun_off_switch, headers=self.headers, json=json)
         print(response.text)
 
-    # def set_humidity(self, humidity: int):
-    #     json = {"entity_id": self.entity_id_climate, "humidity": humidity}
-    #     response = post(self.url_set_humidity, headers=self.headers, json=json)
-    #     print(response.text)
+    def get_entity_state(self, entity_id: str) -> Dict:
+        try:
+            response = get(self.api_states_url + "/" + entity_id, headers=self.headers)
+            response.raise_for_status()  # 检查请求是否成功
+            return response.json()
+        except requests.exceptions.HTTPError as http_err:
+            print(f"HTTP错误: {http_err}")
+        except requests.exceptions.RequestException as req_err:
+            print(f"请求异常: {req_err}")
+        return None
 
 
 # configure = {}

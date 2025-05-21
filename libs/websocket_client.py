@@ -2,14 +2,35 @@ import asyncio
 import websockets
 import datetime
 import json
+import math
 from typing import *
+
 
 # WebSocket客户端类 - 处理WebSocket连接和消息收发
 class Websocket_client_esp32:
+    @staticmethod
+    def mean(data):
+        n = len(data)
+        mean = sum(data) / n
+        return mean
+
+    @staticmethod
+    def variance(data):
+        mean = Websocket_client_esp32.mean(data)
+        n = len(data)
+        deviations = [(x - mean) ** 2 for x in data]
+        variance = sum(deviations) / n
+        return variance
+
+    @staticmethod
+    def stdev(data):
+        return math.sqrt(Websocket_client_esp32.variance(data))
+
     def __init__(self, uri):
         self.uri = uri
         self.websocket = None
         self.resp_stack = {}
+        self.record = {}
 
     async def connect(self) -> bool:
         """建立WebSocket连接"""
@@ -84,12 +105,43 @@ class Websocket_client_esp32:
                 if mess["from"] == "esp32_sensors":
                     if mess["type"] == "humidity_temperature":
                         return {
+                            "timestamp": id_timestamp,
                             "temperature": mess["temperature"],
                             "humidity": mess["humidity"],
                         }
             await asyncio.sleep(poll_interval)
             counter += poll_interval
         return None
+
+    async def sample_tem_hum(self, sample_interval: int = 10):
+        self.record["timestamp"] = []
+        self.record["temperature"] = []
+        self.record["humidity"] = []
+        while True:
+            result = await self.get_temperature_humidity()
+            if result:
+                self.record["timestamp"].append(result["timestamp"])
+                self.record["temperature"].append(result["temperature"])
+                self.record["humidity"].append(result["humidity"])
+            await asyncio.sleep(sample_interval)
+            print(self.record)
+
+    async def get_statistc_temp_hum(self, total_simples: int = 10) -> Dict:
+        samples_tem = self.record["temperature"][-total_simples:]
+        samples_hum = self.record["humidity"][-total_simples:]
+        if not samples_tem:
+            return None
+        else:
+            return {
+                "temperature": {
+                    "mean": Websocket_client_esp32.mean(samples_tem),
+                    "stdev": Websocket_client_esp32.stdev(samples_tem),
+                },
+                "humidity": {
+                    "mean": Websocket_client_esp32.mean(samples_hum),
+                    "stdev": Websocket_client_esp32.stdev(samples_hum),
+                },
+            }
 
     # 异步任务示例 - 定期执行的心跳任务
     async def heartbeat_task(self, interval=5):
