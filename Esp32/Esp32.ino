@@ -179,7 +179,7 @@ private:
           DynamicJsonDocument doc_resp(512);  // 使用动态文档避免堆栈溢出
           doc_resp["from"] = "esp32_sensors";
           doc_resp["to"] = "AI_server";
-          doc_resp["id"] = doc["id"].as<int>();
+          doc_resp["id"] = doc["id"];
           doc_resp["type"] = "humidity_temperature";
           doc_resp["temperature"] = th.first;
           doc_resp["humidity"] = th.second;

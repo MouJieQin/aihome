@@ -3,19 +3,76 @@ import os
 from typing import *
 import threading
 import asyncio
+import azure.cognitiveservices.speech as speechsdk
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 
 class Speaker:
-    def __init__(self):
+    def __init__(self, configure: Dict):
         self.start_record_wav = "./voices/BubbleAppear.aiff.wav"
         self.end_record_wav = "./voices/BubbleDisappear.aiff.wav"
         self.send_message_wav = "./voices/SentMessage.aiff.wav"
         self.receive_response_wav = "./voices/Blow.aiff.wav"
+        self.azure_config = configure["azure"]
+        self.azure_key = self.azure_config["key"]
+        self.azure_region = self.azure_config["region"]
         mixer.init()
         # 缓存已加载的音频文件和播放状态
         self.audio_cache = {}
+        self.__init_speech_synthesizer()
+
+    def __init_speech_synthesizer(self, voice_name="zh-CN-XiaochenNeural"):
+        speech_config = speechsdk.SpeechConfig(
+            subscription=self.azure_key, region=self.azure_region
+        )
+        audio_output_config = speechsdk.audio.AudioOutputConfig(
+            use_default_speaker=True
+        )
+
+        speech_config.speech_synthesis_voice_name = voice_name
+        self.speech_synthesizer = speechsdk.SpeechSynthesizer(
+            speech_config=speech_config, audio_config=audio_output_config
+        )
+        self.real_time_speech_synthesizer = speechsdk.SpeechSynthesizer(
+            speech_config=speech_config, audio_config=audio_output_config
+        )
+
+    def azure_tts_result(self, tts_resultfuture, text_to_speak, file_name=None):
+        if not tts_resultfuture:
+            return
+        speech_synthesis_result = tts_resultfuture.get()
+        if (
+            speech_synthesis_result.reason
+            == speechsdk.ResultReason.SynthesizingAudioCompleted
+        ):
+            print("\nSpeech synthesized for text [{}]".format(text_to_speak))
+
+            if file_name:
+                audio_data_stream = speechsdk.AudioDataStream(speech_synthesis_result)
+                # You can save all the data in the audio data stream to a file
+                audio_data_stream.save_to_wav_file(file_name)
+                return True
+        elif speech_synthesis_result.reason == speechsdk.ResultReason.Canceled:
+            cancellation_details = speech_synthesis_result.cancellation_details
+            print("\nSpeech synthesis canceled: {}".format(cancellation_details.reason))
+            if cancellation_details.reason == speechsdk.CancellationReason.Error:
+                if cancellation_details.error_details:
+                    print(
+                        "\nError details: {}".format(cancellation_details.error_details)
+                    )
+                    print("\nDid you set the speech resource key and region values?")
+        else:
+            print(
+                "\nspeech_synthesis_result.reason: {}".format(
+                    speech_synthesis_result.reason
+                )
+            )
+
+    def tts(self, text):
+        result = self.real_time_speech_synthesizer.speak_text_async(text)
+        res = self.azure_tts_result(result, text)
+        return res
 
     async def play_audio(
         self, vfile: str, is_cache: bool = False, event: asyncio.Event = None
@@ -66,15 +123,6 @@ class Speaker:
 
         def run_async_play():
             asyncio.run(self.play_audio(vfile, is_cache))
-            # 创建新的事件循环
-            # new_loop = asyncio.new_event_loop()
-            # asyncio.set_event_loop(new_loop)
-
-            # try:
-            #     # 在新循环中运行音频播放协程
-            #     new_loop.run_until_complete(self.play_audio(vfile, is_cache))
-            # finally:
-            #     new_loop.close()
 
         if loop.is_running():
             # 如果事件循环已在运行，创建新线程运行音频播放
@@ -124,5 +172,15 @@ class Speaker:
         self.play_audio_nonblocking(self.receive_response_wav, True)
 
 
-# sp=Speaker()
+configure = {}
+import json
+
+with open("./configure.json", mode="r", encoding="utf-8") as f:
+    configure = json.load(f)
+sp=Speaker(configure)
+sp.tts("当前室内温度25.3摄氏度，当前空气湿度43.2%，需要我为您开启空调吗？")
+print("@out")
+while True:
+    import time
+    time.sleep(10)
 # sp.play_start_record()
