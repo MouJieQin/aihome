@@ -40,6 +40,8 @@ class Websocket_client_esp32:
             return True
         except Exception as e:
             print(f"WebSocket连接失败: {e}")
+            await asyncio.sleep(3)
+            return await self.connect()
             return False
 
     async def send_message(self, message) -> bool:
@@ -56,27 +58,30 @@ class Websocket_client_esp32:
 
     async def receive_messages(self):
         """持续接收服务器消息"""
-        if not self.websocket:
-            print("WebSocket未连接")
-            return
-        try:
-            # while True:
-            # message = await self.websocket.recv()
-            async for message in self.websocket:
-                print(f"收到消息: {message}")
+        while True:
+            if not self.websocket:
+                print("WebSocket未连接")
+            else:
                 try:
-                    mess = json.loads(message)
-                    self.resp_stack[mess["id"]] = mess
-                except json.JSONDecodeError:
-                    print(f"消息解析失败: {message}")
-        except websockets.exceptions.ConnectionClosedOK:
-            print("WebSocket连接已正常关闭")
-        except websockets.exceptions.ConnectionClosedError as e:
-            print(f"WebSocket连接意外关闭: {e}")
-        except Exception as e:
-            print(f"接收消息时出错: {e}")
-        finally:
-            await self.close()
+                    # while True:
+                    # message = await self.websocket.recv()
+                    async for message in self.websocket:
+                        print(f"收到消息: {message}")
+                        try:
+                            mess = json.loads(message)
+                            self.resp_stack[mess["id"]] = mess
+                        except json.JSONDecodeError:
+                            print(f"消息解析失败: {message}")
+                except websockets.exceptions.ConnectionClosedOK:
+                    print("WebSocket连接已正常关闭")
+                except websockets.exceptions.ConnectionClosedError as e:
+                    print(f"WebSocket连接意外关闭: {e}")
+                    self.websocket = None
+                except Exception as e:
+                    print(f"接收消息时出错: {e}")
+                finally:
+                    await self.close()
+            await asyncio.sleep(3)
 
     async def close(self):
         if self.websocket:
@@ -104,11 +109,14 @@ class Websocket_client_esp32:
                 mess = self.resp_stack.pop(id_timestamp)
                 if mess["from"] == "esp32_sensors":
                     if mess["type"] == "humidity_temperature":
-                        return {
-                            "timestamp": id_timestamp,
-                            "temperature": mess["temperature"],
-                            "humidity": mess["humidity"],
-                        }
+                        if not mess["temperature"]:
+                            print("@!!! mess:", mess)
+                        else:
+                            return {
+                                "timestamp": id_timestamp,
+                                "temperature": mess["temperature"],
+                                "humidity": mess["humidity"],
+                            }
             await asyncio.sleep(poll_interval)
             counter += poll_interval
         return None
@@ -148,6 +156,9 @@ class Websocket_client_esp32:
         """定期向WebSocket服务器发送心跳消息"""
         message = {"message": "heartbeat"}
         heartbeat_mess = json.dumps(message, ensure_ascii=False)
+        await asyncio.sleep(8)
+        await self.close()
         while True:
-            await self.send_message(heartbeat_mess)
+            if not await self.send_message(heartbeat_mess):
+                await self.connect()
             await asyncio.sleep(interval)

@@ -15,6 +15,7 @@ class Climate_bedroom:
             "Authorization": "Bearer " + self.ha_config["long_lived_access_token"],
             "content-type": "application/json",
         }
+        self.url_api_climate = self.api_url + "/climate"
         self.url_trun_off_climate = self.api_url + "/climate/turn_off"
         self.url_trun_on_climate = self.api_url + "/climate/turn_on"
         self.url_toggle_switch = self.api_url + "/switch/toggle"
@@ -30,12 +31,38 @@ class Climate_bedroom:
     def fast_cool_mode(self, temperature: int = 25):
         json = {
             "entity_id": self.entity_id_climate,
-            "state": "cool",
-            "fan_mode": "high",
             "preset_mode": "none",
+        }
+        url = self.url_api_climate + "/set_preset_mode"
+        response = post(url, headers=self.headers, json=json)
+        print(response.text)
+        json = {
+            "entity_id": self.entity_id_climate,
+            "hvac_mode": "cool",
+        }
+        url = self.url_api_climate + "/set_hvac_mode"
+        response = post(url, headers=self.headers, json=json)
+        print(response.text)
+        json = {
+            "entity_id": self.entity_id_climate,
+            "fan_mode": "high",
+        }
+        url = self.url_api_climate + "/set_fan_mode"
+        response = post(url, headers=self.headers, json=json)
+        print(response.text)
+        json = {
+            "entity_id": self.entity_id_climate,
+            "temperature": temperature,
+        }
+        url = self.url_api_climate + "/set_temperature"
+        response = post(url, headers=self.headers, json=json)
+        print(response.text)
+        json = {
+            "entity_id": self.entity_id_climate,
             "swing_mode": "off",
         }
-        response = post(self.url_trun_on_climate, headers=self.headers, json=json)
+        url = self.url_api_climate + "/set_swing_mode"
+        response = post(url, headers=self.headers, json=json)
         print(response.text)
 
     def turn_on_climate(self):
@@ -61,6 +88,16 @@ class Climate_bedroom:
     def toggle_quiet_mode(self):
         json = {"entity_id": self.entity_id_quiet_mode}
         response = post(self.url_toggle_switch, headers=self.headers, json=json)
+        print(response.text)
+
+    def turn_on_quiet_mode(self):
+        json = {"entity_id": self.entity_id_quiet_mode}
+        response = post(self.url_trun_on_switch, headers=self.headers, json=json)
+        print(response.text)
+
+    def turn_off_quiet_mode(self):
+        json = {"entity_id": self.entity_id_quiet_mode}
+        response = post(self.url_trun_off_switch, headers=self.headers, json=json)
         print(response.text)
 
     def turn_on_health_mode(self):
@@ -91,4 +128,4 @@ class Climate_bedroom:
 # with open("./configure.json", mode="r", encoding="utf-8") as f:
 #     configure = json.load(f)
 # x = Climate_bedroom(configure)
-# x.turn_off_climate()
+# x.fast_cool_mode()

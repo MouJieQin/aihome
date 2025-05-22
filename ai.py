@@ -258,16 +258,16 @@ class AI_Server:
     def auto_cool_mode(
         self,
         temperature: int = 25,
-        total_simples=3,
-        # total_simples=18,
+        # total_simples=3,
+        total_simples=30,
     ):
-        # self.climate_bedroom.fast_cool_mode(temperature=temperature)
+        self.climate_bedroom.fast_cool_mode(temperature=temperature)
         self.light_bedroom.adjust_fan_speed_to_max()
 
         async def auto_cool_mode_monitor():
             print("@Start of auto_cool_mode_monitor.")
-            await asyncio.sleep(30)
-            # await asyncio.sleep(180)
+            # await asyncio.sleep(30)
+            await asyncio.sleep(300)
             while True:
                 result = await self.ws_client_esp32.get_statistc_temp_hum(total_simples)
                 if not result:
@@ -275,14 +275,14 @@ class AI_Server:
                 else:
                     print(result)
                     temp_stdev = result["temperature"]["stdev"]
-                    if temp_stdev < 0.1:
+                    if temp_stdev < 0.05:
                         print("@Temperature is stabled.")
-                        # self.climate_bedroom.turn_on_health_mode()
-                        # self.climate_bedroom.turn_on_quiet_mode()
+                        self.climate_bedroom.turn_on_health_mode()
+                        self.climate_bedroom.turn_on_quiet_mode()
                         self.light_bedroom.adjust_fan_speed_to_min()
                         break
-                await asyncio.sleep(30)
-                # await asyncio.sleep(60)
+                # await asyncio.sleep(30)
+                await asyncio.sleep(60)
 
         def run_async_play():
             asyncio.run(auto_cool_mode_monitor())
@@ -314,7 +314,7 @@ class AI_Server:
         await self.ws_client_esp32.connect()
         tasks = [
             self.stop_keyword_recogizers(),
-            self.ws_client_esp32.sample_tem_hum(),  # WebSocket消息接收任务
+            self.ws_client_esp32.sample_tem_hum(),
             self.ws_client_esp32.receive_messages(),  # WebSocket消息接收任务
             self.ws_client_esp32.heartbeat_task(),  # 心跳任务
             # loop.run_in_executor(executor, self.sync_task, stop_event),  # 同步任务
