@@ -19,45 +19,59 @@ public:
     delete instance;
     instance = nullptr;
   }
+
   const float readHumidity() {
-    delay(2000);
+    // 减少延时，避免阻塞系统
+    delay(20);
     return dht.readHumidity();
   }
+
   const float readTemperature() {
-    delay(2000);
+    // 减少延时，避免阻塞系统
+    delay(20);
     return dht.readTemperature();
   }
 
   const std::pair<float, float> get_temperature_humidity() {
-    delay(2000);
+    // 减少延时，避免阻塞系统
+    delay(20);
     float temperature = dht.readTemperature();
     float humidity = dht.readHumidity();
     return std::make_pair(temperature, humidity);
   }
+
 private:
   explicit Sensor_DHT22(const uint8_t pin)
     : pin(pin),
       dht(pin, DHT22) {
   }
+
   Sensor_DHT22(const Sensor_DHT22 &) = delete;
   Sensor_DHT22 &operator=(const Sensor_DHT22 &) = delete;
   ~Sensor_DHT22() {
   }
+
 private:
   void setup() {
-    Serial.begin(115200);
+    // 只初始化一次串口
+    if (!Serial) {
+      Serial.begin(115200);
+    }
     dht.begin();
   }
+
 private:
   uint8_t pin;
   DHT dht;
   static Sensor_DHT22 *instance;
 };
+
 Sensor_DHT22 *Sensor_DHT22::instance = nullptr;
 
 class Websocket_manager {
 public:
   void cleanupClients() {
+    // 清理断开的客户端
     ws.cleanupClients();
   }
 
@@ -71,9 +85,19 @@ public:
   }
 
   static void destroyInstance() {
-    instance->dht22->destroyInstance();
-    delete instance;
-    instance = nullptr;
+    if (instance) {
+      instance->disconnectAllClients();
+      instance->dht22->destroyInstance();
+      delete instance;
+      instance = nullptr;
+    }
+  }
+
+  // 主动断开所有客户端连接
+  void disconnectAllClients() {
+    ws.closeAll();
+    // 给客户端一些时间处理断开
+    delay(100);
   }
 
 private:
@@ -83,16 +107,21 @@ private:
       server(port), ws(url) {
     dht22 = Sensor_DHT22::getInstance(pin_DHT22);
   }
+
   Websocket_manager(const Websocket_manager &) = delete;
   Websocket_manager &operator=(const Websocket_manager &) = delete;
 
   ~Websocket_manager() {
+    // 确保在销毁前断开所有连接
+    disconnectAllClients();
     server.end();
-    ws.closeAll();
   }
 
   void setup() {
-    Serial.begin(115200);
+    // 只初始化一次串口
+    if (!Serial) {
+      Serial.begin(115200);
+    }
 
     Serial.print("Connecting to ");
     Serial.println(ssid);
@@ -115,12 +144,25 @@ private:
   }
 
   static void handle_websocket_message(AsyncWebSocket *server, AsyncWebSocketClient *client, void *arg, uint8_t *data, size_t len) {
-    if (instance == nullptr) return;
+    // 检查实例是否存在
+    if (instance == nullptr || client == nullptr) return;
+
+    // 检查客户端是否有效
+    if (!client->canSend()) {
+      Serial.printf("Client #%u is not ready to send data\n", client->id());
+      return;
+    }
 
     AwsFrameInfo *info = (AwsFrameInfo *)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-      data[len] = 0;
-      StaticJsonDocument<200> doc;
+      // 确保字符串有终止符
+      if (len < 255) {
+        data[len] = 0;
+      } else {
+        data[254] = 0;
+      }
+
+      StaticJsonDocument<256> doc;
       DeserializationError error = deserializeJson(doc, data);
 
       if (error) {
@@ -134,16 +176,23 @@ private:
         const char *type = doc["type"] | "";
         if (strcmp(type, "humidity_temperature") == 0) {
           std::pair<float, float> th = instance->dht22->get_temperature_humidity();
-          JsonDocument doc_resp;
+          DynamicJsonDocument doc_resp(512);  // 使用动态文档避免堆栈溢出
           doc_resp["from"] = "esp32_sensors";
           doc_resp["to"] = "AI_server";
-          doc_resp["id"] = doc["id"];
+          doc_resp["id"] = doc["id"].as<int>();
           doc_resp["type"] = "humidity_temperature";
           doc_resp["temperature"] = th.first;
           doc_resp["humidity"] = th.second;
-          char output[256];
-          serializeJson(doc_resp, output);
-          instance->ws.text(client->id(), output);
+
+          // 使用动态缓冲区
+          char *output = (char *)malloc(512);
+          if (output) {
+            serializeJson(doc_resp, output, 512);
+            instance->ws.text(client->id(), output);
+            free(output);
+          } else {
+            Serial.println("Memory allocation failed for JSON response");
+          }
         }
       }
     }
@@ -151,19 +200,32 @@ private:
 
   static void event_handler_static(AsyncWebSocket *server, AsyncWebSocketClient *client,
                                    AwsEventType type, void *arg, uint8_t *data, size_t len) {
+    if (client == nullptr) return;
+
     switch (type) {
       case WS_EVT_CONNECT:
         Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
         break;
+
       case WS_EVT_DISCONNECT:
         Serial.printf("WebSocket client #%u disconnected\n", client->id());
+        // 这里可以添加客户端断开后的清理操作
         break;
+
       case WS_EVT_DATA:
         handle_websocket_message(server, client, arg, data, len);
         break;
+
       case WS_EVT_PONG:
+        Serial.printf("WebSocket client #%u pong received\n", client->id());
+        break;
+
       case WS_EVT_ERROR:
-        Serial.printf("WebSocket client #%u WS_EVT_ERROR or WS_EVT_PONG\n", client->id());
+        Serial.printf("WebSocket client #%u error: %s\n", client->id(), (char *)data);
+        // 发生错误时可以主动断开客户端
+        if (client->canSend()) {
+          client->close();
+        }
         break;
     }
   }
@@ -186,37 +248,32 @@ Websocket_manager *websocket_manager;
 uint8_t Sensor_HC_SR501_pin = 26;
 bool led_state = 0;
 const uint8_t led_pin = 2;
+
 void setup() {
   pinMode(led_pin, OUTPUT);
   pinMode(Sensor_HC_SR501_pin, INPUT);
   digitalWrite(led_pin, LOW);
+
   const char *ssid = "403";
   const char *password = "14031403";
+
   // 创建单例实例
   websocket_manager = Websocket_manager::getInstance(ssid, password, "/ws", 80, 4);
 }
 
 // 在程序结束时调用
 void end() {
-  Websocket_manager::destroyInstance();
+  // 确保安全销毁实例
+  if (websocket_manager) {
+    Websocket_manager::destroyInstance();
+    websocket_manager = nullptr;
+  }
 }
 
 void loop() {
-  // if (digitalRead(Sensor_HC_SR501_pin) == HIGH) {
-  //   if (led_state == LOW) {
-  //     Serial.println("Sensor_HC_SR501_pin is Activated.");
-  //     led_state = HIGH;
-  //     digitalWrite(led_pin, led_state);
-  //   } else {
-  //   }
-  // } else {
-  //   if (led_state == LOW) {
-  //   } else {
-  //     Serial.println("Sensor_HC_SR501_pin is Deactivated.");
-  //     led_state = LOW;
-  //     digitalWrite(led_pin, led_state);
-  //   }
-  // }
+  // 定期清理断开的客户端
   websocket_manager->cleanupClients();
-  // delay(1000);
+
+  // 添加一些非阻塞延时，让系统有时间处理其他任务
+  delay(10);
 }
