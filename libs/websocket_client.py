@@ -128,11 +128,14 @@ class Websocket_client_esp32:
         while True:
             result = await self.get_temperature_humidity()
             if result:
+                if len(self.record["timestamp"]) >= 200:
+                    self.record["timestamp"] = self.record["timestamp"][-100:]
+                    self.record["temperature"] = self.record["temperature"][-100:]
+                    self.record["humidity"] = self.record["humidity"][-100:]
                 self.record["timestamp"].append(result["timestamp"])
                 self.record["temperature"].append(result["temperature"])
                 self.record["humidity"].append(result["humidity"])
             await asyncio.sleep(sample_interval)
-            print(self.record)
 
     async def get_statistc_temp_hum(self, total_simples: int = 10) -> Dict:
         samples_tem = self.record["temperature"][-total_simples:]
@@ -156,8 +159,6 @@ class Websocket_client_esp32:
         """定期向WebSocket服务器发送心跳消息"""
         message = {"message": "heartbeat"}
         heartbeat_mess = json.dumps(message, ensure_ascii=False)
-        await asyncio.sleep(8)
-        await self.close()
         while True:
             if not await self.send_message(heartbeat_mess):
                 await self.connect()

@@ -69,6 +69,12 @@ class Speaker:
                 )
             )
 
+    def speak_text(self,text:str):
+        self.real_time_speech_synthesizer.speak_text(text)
+
+    def start_speaking_text(self,text:str):
+        self.real_time_speech_synthesizer.start_speaking_text(text)
+
     def tts(self, text):
         result = self.real_time_speech_synthesizer.speak_text_async(text)
         res = self.azure_tts_result(result, text)
@@ -114,8 +120,6 @@ class Speaker:
 
         except Exception as e:
             print(f"播放音频时发生错误: {e}")
-        # finally:
-        # mixer.quit()  # 注意：如果要后续控制音频，不要在这里退出mixer
 
     def play_audio_blocking(self, vfile: str, is_cache: bool = False):
         """阻塞调用异步音频播放，直到播放完成"""
@@ -132,20 +136,6 @@ class Speaker:
         else:
             # 否则直接运行事件循环
             asyncio.run(self.play_audio(vfile, is_cache))
-
-    # def play_audio_blocking(self, vfile: str, is_cache: bool = False):
-    #     """阻塞调用异步音频播放，直到播放完成"""
-    #     loop = asyncio.get_event_loop()
-    #     if loop.is_running():
-    #         # 如果事件循环已在运行（例如在Jupyter中），使用run_coroutine_threadsafe
-    #         print("loop is running.")
-    #         future = asyncio.run_coroutine_threadsafe(
-    #             self.play_audio(vfile, is_cache), loop
-    #         )
-    #         future.result()  # 阻塞直到完成
-    #     else:
-    #         # 否则直接运行事件循环
-    #         asyncio.run(self.play_audio(vfile, is_cache))
 
     def play_audio_nonblocking(self, vfile: str, is_cache=False) -> threading.Thread:
         """非阻塞调用异步音频播放，在单独线程中运行"""
@@ -172,15 +162,15 @@ class Speaker:
         self.play_audio_nonblocking(self.receive_response_wav, True)
 
 
-configure = {}
-import json
+# configure = {}
+# import json
 
-with open("./configure.json", mode="r", encoding="utf-8") as f:
-    configure = json.load(f)
-sp=Speaker(configure)
-sp.tts("当前室内温度25.3摄氏度，当前空气湿度43.2%，需要我为您开启空调吗？")
-print("@out")
-while True:
-    import time
-    time.sleep(10)
+# with open("./configure.json", mode="r", encoding="utf-8") as f:
+#     configure = json.load(f)
+# sp=Speaker(configure)
+# sp.tts("当前室内温度25.3摄氏度，当前空气湿度43.2%，需要我为您开启空调吗？")
+# print("@out")
+# while True:
+#     import time
+#     time.sleep(10)
 # sp.play_start_record()

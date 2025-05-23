@@ -136,7 +136,7 @@ class AI_Server:
         self.esp32_config = self.configure["esp32"]
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
-        self.speaker = Speaker()
+        self.speaker = Speaker(self.configure)
         self.keyword_keep_alive_list = ["ai_name"]
         self.keyword_recognizers = {
             "turn_on_light": {
@@ -220,11 +220,6 @@ class AI_Server:
                 "model_file": "./voices/models/quiet-mode-climate.table",
                 "callback_recognized": self.climate_bedroom.toggle_quiet_mode,
             },
-            # "ai_name": {
-            #     "keyword": "千夏",
-            #     "model_file": "./voices/models/qianxia.table",
-            #     "callback_recognized": self.activate_all_keyword_recogizers,
-            # },
         }
         self._keyword_recognizers_setup()
 
@@ -258,16 +253,24 @@ class AI_Server:
     def auto_cool_mode(
         self,
         temperature: int = 25,
-        # total_simples=3,
         total_simples=30,
     ):
-        self.climate_bedroom.fast_cool_mode(temperature=temperature)
+        # self.climate_bedroom.fast_cool_mode(temperature=temperature)
         self.light_bedroom.adjust_fan_speed_to_max()
 
         async def auto_cool_mode_monitor():
-            print("@Start of auto_cool_mode_monitor.")
-            # await asyncio.sleep(30)
-            await asyncio.sleep(300)
+            await asyncio.sleep(1)
+            result = await self.ws_client_esp32.get_statistc_temp_hum(total_simples)
+            self.speaker.speak_text(
+                "已全速启动空调和吊扇，目标温度为{:.1f}摄氏度。".format(temperature)
+            )
+            if result:
+                self.speaker.speak_text(
+                    "当前室内温度{:.1f}摄氏度，当前空气湿度{:.1f}%。".format(
+                        result["temperature"]["mean"], result["humidity"]["mean"]
+                    )
+                )
+            # await asyncio.sleep(300)
             while True:
                 result = await self.ws_client_esp32.get_statistc_temp_hum(total_simples)
                 if not result:
@@ -275,14 +278,22 @@ class AI_Server:
                 else:
                     print(result)
                     temp_stdev = result["temperature"]["stdev"]
+                    # if temp_stdev < 0.1:
                     if temp_stdev < 0.05:
+                        await asyncio.sleep(15)
                         print("@Temperature is stabled.")
+                        self.speaker.speak_text(
+                            "当前室内温度稳定在{:.1f}摄氏度，当前空气湿度{:.1f}%。空调将进入健康和静音模式，吊扇速度降至最低。".format(
+                                result["temperature"]["mean"],
+                                result["humidity"]["mean"],
+                            )
+                        )
+                        await asyncio.sleep(1)
                         self.climate_bedroom.turn_on_health_mode()
                         self.climate_bedroom.turn_on_quiet_mode()
                         self.light_bedroom.adjust_fan_speed_to_min()
                         break
-                # await asyncio.sleep(30)
-                await asyncio.sleep(60)
+                await asyncio.sleep(30)
 
         def run_async_play():
             asyncio.run(auto_cool_mode_monitor())
@@ -290,9 +301,7 @@ class AI_Server:
         thread = threading.Thread(target=run_async_play)
         thread.daemon = True
         thread.start()
-        print("@End of auto_cool_mode.")
         return thread
-        # asyncio.create_task(auto_cool_mode_monitor())
 
     # 同步任务示例 - 在单独线程中运行
     def sync_task(self, stop_event: asyncio.Event):
