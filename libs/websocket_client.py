@@ -109,9 +109,7 @@ class Websocket_client_esp32:
                 mess = self.resp_stack.pop(id_timestamp)
                 if mess["from"] == "esp32_sensors":
                     if mess["type"] == "humidity_temperature":
-                        if not mess["temperature"]:
-                            print("@!!! mess:", mess)
-                        else:
+                        if mess["temperature"]:
                             return {
                                 "timestamp": id_timestamp,
                                 "temperature": mess["temperature"],

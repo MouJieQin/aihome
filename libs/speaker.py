@@ -69,10 +69,10 @@ class Speaker:
                 )
             )
 
-    def speak_text(self,text:str):
+    def speak_text(self, text: str):
         self.real_time_speech_synthesizer.speak_text(text)
 
-    def start_speaking_text(self,text:str):
+    def start_speaking_text(self, text: str):
         self.real_time_speech_synthesizer.start_speaking_text(text)
 
     def tts(self, text):
@@ -142,7 +142,8 @@ class Speaker:
 
         def run_async_play():
             asyncio.run(self.play_audio(vfile, is_cache))
-            asyncio.run(self.play_audio(vfile, is_cache))
+            if vfile == self.start_record_wav:
+                asyncio.run(self.play_audio(vfile, is_cache))
 
         thread = threading.Thread(target=run_async_play)
         thread.daemon = True  # 设置为守护线程，主线程退出时自动终止

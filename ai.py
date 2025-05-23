@@ -59,6 +59,13 @@ class AI_Server:
         AI_Server.response_time_counter = AI_Server.response_timeout
         self.speaker.play_start_record()
 
+    def activate_response_keyword_recogizers(self):
+        for keyword in self.keyword_keep_alive_list:
+            item = self.keyword_recognizers[keyword]
+            item["recognizer"].recognize_once_async(item["model"])
+        AI_Server.response_time_counter = AI_Server.response_timeout
+        self.speaker.play_start_record()
+
     def stop_all_keyword_recogizers(self):
         for keyword, items in self.keyword_recognizers.items():
             items["recognizer"].stop_recognition_async().get()
@@ -131,13 +138,16 @@ class AI_Server:
         with open(configure_path, mode="r", encoding="utf-8") as f:
             self.configure = json.load(f)
         self.__init_porcupine()
+        self.response_user = None
+        self.callback_to_response_yes: Callable = None
+        self.callback_to_response_no: Callable = None
         self.light_bedroom = Light_bedroom(self.configure)
         self.climate_bedroom = Climate_bedroom(self.configure)
         self.esp32_config = self.configure["esp32"]
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
         self.speaker = Speaker(self.configure)
-        self.keyword_keep_alive_list = ["ai_name"]
+        self.keyword_keep_alive_list = ["response_no", "response_yes"]
         self.keyword_recognizers = {
             "turn_on_light": {
                 "keyword": "开灯",
@@ -220,8 +230,21 @@ class AI_Server:
                 "model_file": "./voices/models/quiet-mode-climate.table",
                 "callback_recognized": self.climate_bedroom.toggle_quiet_mode,
             },
+            "response_no": {
+                "keyword": "不用了",
+                "model_file": "./voices/models/response-no.table",
+                "callback_recognized": lambda: self.callback_to_response_no(),
+            },
+            "response_yes": {
+                "keyword": "好的",
+                "model_file": "./voices/models/response-yes.table",
+                "callback_recognized": lambda: self.callback_to_response_yes(),
+            },
         }
         self._keyword_recognizers_setup()
+
+    def set_response_value(self, val):
+        self.response_user = val
 
     @staticmethod
     def _canceled_keyword_cb(keyword: str) -> Callable:
@@ -252,10 +275,10 @@ class AI_Server:
 
     def auto_cool_mode(
         self,
-        temperature: int = 25,
+        temperature: int = 26,
         total_simples=30,
     ):
-        # self.climate_bedroom.fast_cool_mode(temperature=temperature)
+        self.climate_bedroom.fast_cool_mode(temperature=temperature)
         self.light_bedroom.adjust_fan_speed_to_max()
 
         async def auto_cool_mode_monitor():
@@ -266,11 +289,11 @@ class AI_Server:
             )
             if result:
                 self.speaker.speak_text(
-                    "当前室内温度{:.1f}摄氏度，当前空气湿度{:.1f}%。".format(
+                    "当前室内温度{:.1f}摄氏度，空气湿度{:.1f}%。".format(
                         result["temperature"]["mean"], result["humidity"]["mean"]
                     )
                 )
-            # await asyncio.sleep(300)
+            await asyncio.sleep(300)
             while True:
                 result = await self.ws_client_esp32.get_statistc_temp_hum(total_simples)
                 if not result:
@@ -281,9 +304,9 @@ class AI_Server:
                     # if temp_stdev < 0.1:
                     if temp_stdev < 0.05:
                         await asyncio.sleep(15)
-                        print("@Temperature is stabled.")
+                        self.speaker.play_receive_response()
                         self.speaker.speak_text(
-                            "当前室内温度稳定在{:.1f}摄氏度，当前空气湿度{:.1f}%。空调将进入健康和静音模式，吊扇速度降至最低。".format(
+                            "当前室内温度稳定在{:.1f}摄氏度，空气湿度{:.1f}%。空调将进入健康和静音模式，吊扇速度降至最低。".format(
                                 result["temperature"]["mean"],
                                 result["humidity"]["mean"],
                             )
@@ -302,6 +325,37 @@ class AI_Server:
         thread.daemon = True
         thread.start()
         return thread
+
+    async def monitor_tem_hum(self):
+        total_simples = 30
+        await asyncio.sleep(300)
+
+        def callback_for_yes():
+            self.auto_cool_mode()
+            self.callback_to_response_yes = None
+
+        def callback_for_no():
+            AI_Server.response_time_counter = 0
+            self.callback_to_response_no = None
+
+        while True:
+            result = await self.ws_client_esp32.get_statistc_temp_hum(total_simples)
+            if result:
+                tem = result["temperature"]["mean"]
+                hum = result["humidity"]["mean"]
+                if tem >= 31 or (tem >= 29 and hum >= 60):
+                    self.speaker.play_receive_response()
+                    self.speaker.speak_text(
+                        "当前室内温度{:.1f}摄氏度，空气湿度{:.1f}%。需要启动空调吗？".format(
+                            tem,
+                            hum,
+                        )
+                    )
+                    self.callback_to_response_yes = callback_for_yes
+                    self.callback_to_response_no = callback_for_no
+                    self.activate_response_keyword_recogizers()
+                    break ##############################
+            await asyncio.sleep(60)
 
     # 同步任务示例 - 在单独线程中运行
     def sync_task(self, stop_event: asyncio.Event):
@@ -323,6 +377,7 @@ class AI_Server:
         await self.ws_client_esp32.connect()
         tasks = [
             self.stop_keyword_recogizers(),
+            # self.monitor_tem_hum(),
             self.ws_client_esp32.sample_tem_hum(),
             self.ws_client_esp32.receive_messages(),  # WebSocket消息接收任务
             self.ws_client_esp32.heartbeat_task(),  # 心跳任务
