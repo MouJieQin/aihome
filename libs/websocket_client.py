@@ -40,8 +40,6 @@ class Websocket_client_esp32:
             return True
         except Exception as e:
             print(f"WebSocket连接失败: {e}")
-            await asyncio.sleep(3)
-            return await self.connect()
             return False
 
     async def send_message(self, message) -> bool:
@@ -159,5 +157,6 @@ class Websocket_client_esp32:
         heartbeat_mess = json.dumps(message, ensure_ascii=False)
         while True:
             if not await self.send_message(heartbeat_mess):
-                await self.connect()
+                while not await self.connect():
+                    await asyncio.sleep(interval)
             await asyncio.sleep(interval)
