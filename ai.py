@@ -15,6 +15,7 @@ import os
 from typing import *
 from libs.bedroom_light import LightBedroom
 from libs.bedroom_climate import ClimateBedroom
+from libs.elec_meter_controller import ElecMeterController
 from libs.websocket_client import Websocket_client_esp32
 from libs.speaker import Speaker
 from libs.homeassistant_vm_manager import VirtualBoxController
@@ -142,6 +143,7 @@ class AI_Server:
         self.callback_to_response_no: Callable = None
         self.light_bedroom = LightBedroom(self.configure)
         self.climate_bedroom = ClimateBedroom(self.configure)
+        self.elec_controller = ElecMeterController(self.configure)
         self.esp32_config = self.configure["esp32"]
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
@@ -229,6 +231,16 @@ class AI_Server:
                 "model_file": "./voices/models/quiet-mode-climate.table",
                 "callback_recognized": self.climate_bedroom.toggle_quiet_mode,
             },
+            "turn_on_elec_controller": {
+                "keyword": "开启蚊香",
+                "model_file": "./voices/models/turn-on-mosquito-repellent-incense.table",
+                "callback_recognized": self.turn_on_controller,
+            },
+            "turn_off_elec_controller": {
+                "keyword": "关闭蚊香",
+                "model_file": "./voices/models/turn-off-mosquito-repellent-incense.table",
+                "callback_recognized": self.turn_off_controller,
+            },
             "response_no": {
                 "keyword": "不用了",
                 "model_file": "./voices/models/response-no.table",
@@ -241,6 +253,14 @@ class AI_Server:
             },
         }
         self._keyword_recognizers_setup()
+
+    def turn_on_controller(self):
+        self.elec_controller.turn_on_controller()
+        self.speaker.speak_text("蚊香已开启。")
+
+    def turn_off_controller(self):
+        self.elec_controller.turn_off_controller()
+        self.speaker.speak_text("蚊香已关闭。")
 
     def set_response_value(self, val):
         self.response_user = val
