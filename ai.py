@@ -10,22 +10,17 @@ import datetime
 import threading
 import sys
 import os
-import logging
+
+# import logging
 from typing import *
-from libs.bedroom_light import Light_bedroom
-from libs.bedroom_climate import Climate_bedroom
+from libs.bedroom_light import LightBedroom
+from libs.bedroom_climate import ClimateBedroom
 from libs.websocket_client import Websocket_client_esp32
 from libs.speaker import Speaker
 from libs.homeassistant_vm_manager import VirtualBoxController
+from libs.log_config import logger
 
 os.chdir(os.path.dirname(__file__))
-
-logging.basicConfig(
-    filename="./run.log",
-    format="%(asctime)s - %(name)s - %(levelname)s -%(module)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    level=20,
-)
 
 
 class AI_Server:
@@ -117,7 +112,7 @@ class AI_Server:
                 result = self.porcupine.process(pcm)
                 # 如果检测到唤醒词
                 if result >= 0:
-                    print(f"检测到唤醒词: あすな")
+                    logger.info(f"检测到唤醒词: あすな")
                     self.activate_all_keyword_recogizers()
 
         thread = threading.Thread(target=run_ai_awake)
@@ -145,8 +140,8 @@ class AI_Server:
         self.response_user = None
         self.callback_to_response_yes: Callable = None
         self.callback_to_response_no: Callable = None
-        self.light_bedroom = Light_bedroom(self.configure)
-        self.climate_bedroom = Climate_bedroom(self.configure)
+        self.light_bedroom = LightBedroom(self.configure)
+        self.climate_bedroom = ClimateBedroom(self.configure)
         self.esp32_config = self.configure["esp32"]
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])

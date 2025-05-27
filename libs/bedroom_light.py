@@ -1,98 +1,157 @@
-from requests import post
-from typing import *
+"""
+This module provides a `LightBedroom` class for controlling bedroom lights and fans
+using the Home Assistant Python API. It allows users to perform various operations
+such as turning lights on/off, switching light modes, and adjusting fan speed.
+"""
+
+from homeassistant_api import Client
+from typing import Dict, Any
+from libs.log_config import logger
 
 
-class Light_bedroom:
-    def __init__(self, configure: Dict):
-        self.ha_config = configure["home_assistant"]
-        self.light_config = configure["smart_home_appliances"]["light_bedroom"]
-        self.ha_url = "http://" + self.ha_config["host"] + ":" + self.ha_config["port"]
-        self.api_url = self.ha_url + "/api/services"
-        self.url_trun_off_light = self.api_url + "/light/turn_off"
-        self.url_trun_on_light = self.api_url + "/light/turn_on"
-        self.url_number_fan_speed = self.api_url + "/number/set_value"
-        self.url_turn_off_fan = self.api_url + "/fan/turn_off"
-        self.headers = {
-            "Authorization": "Bearer " + self.ha_config["long_lived_access_token"],
-            "content-type": "application/json",
-        }
-        self.entity_id_config = self.light_config["entity_id"]
-        self.light_entity_id = self.entity_id_config["light"]
-        self.fan_entity_id = self.entity_id_config["fan"]
-        self.fan_speed_entity_id = self.entity_id_config["fan_speed"]
+class LightBedroom:
+    """
+    A class for controlling bedroom lights and fans using the Home Assistant Python API.
 
-    def turn_on_light(self):
-        json = {"entity_id": self.light_entity_id}
-        response = post(self.url_trun_on_light, headers=self.headers, json=json)
-        print(response.text)
+    Attributes:
+        client (Client): Home Assistant API client instance.
+        light_entity_id (str): Entity ID for the bedroom light.
+        fan_entity_id (str): Entity ID for the bedroom fan.
+        fan_speed_entity_id (str): Entity ID for the bedroom fan speed control.
+    """
 
-    def turn_off_light(self):
-        json = {"entity_id": self.light_entity_id}
-        response = post(self.url_trun_off_light, headers=self.headers, json=json)
-        print(response.text)
+    def __init__(self, config: Dict[str, Any]):
+        """
+        Initializes the bedroom light and fan controller using the Home Assistant Python API.
 
-    def turn_on_light_mode_night(self):
-        json_light_mode_night = {
-            "entity_id": self.light_entity_id,
-            "effect": "Night Light",
-        }
-        response = post(
-            self.url_trun_on_light, headers=self.headers, json=json_light_mode_night
+        Args:
+            config (Dict[str, Any]): Configuration dictionary containing Home Assistant
+                and device entity information. The expected structure is:
+                {
+                    "home_assistant": {
+                        "host": str,
+                        "port": int,
+                        "long_lived_access_token": str
+                    },
+                    "smart_home_appliances": {
+                        "light_bedroom": {
+                            "entity_id": {
+                                "light": str,
+                                "fan": str,
+                                "fan_speed": str
+                            }
+                        }
+                    }
+                }
+        """
+        ha_config = config["home_assistant"]
+        light_config = config["smart_home_appliances"]["light_bedroom"]
+        api_url = f"http://{ha_config['host']}:{ha_config['port']}/api"
+        self.client = Client(api_url, ha_config["long_lived_access_token"])
+        self.light_entity_id = light_config["entity_id"]["light"]
+        self.fan_entity_id = light_config["entity_id"]["fan"]
+        self.fan_speed_entity_id = light_config["entity_id"]["fan_speed"]
+
+    def _call_service(self, domain: str, service: str, data: Dict[str, Any]) -> None:
+        """
+        Calls a Home Assistant service.
+
+        Args:
+            domain (str): The domain of the service (e.g., 'light', 'fan').
+            service (str): The name of the service (e.g., 'turn_on', 'turn_off').
+            data (Dict[str, Any]): The data to pass to the service.
+        """
+        try:
+            res = self.client.trigger_service(domain, service, **data)
+            logger.info(res)
+        except Exception as e:
+            logger.exception(e)
+
+    def turn_on_light(self) -> None:
+        """
+        Turns on the bedroom light by calling the Home Assistant `light.turn_on` service.
+        """
+        self._call_service("light", "turn_on", {"entity_id": self.light_entity_id})
+
+    def turn_off_light(self) -> None:
+        """
+        Turns off the bedroom light by calling the Home Assistant `light.turn_off` service.
+        """
+        self._call_service("light", "turn_off", {"entity_id": self.light_entity_id})
+
+    def turn_on_light_mode_night(self) -> None:
+        """
+        Activates the night light mode for the bedroom light.
+        """
+        self._call_service(
+            "light",
+            "turn_on",
+            {"entity_id": self.light_entity_id, "effect": "Night Light"},
         )
-        print(response.text)
 
-    def turn_on_light_mode_movie(self):
-        json_light_mode_movie = {
-            "entity_id": self.light_entity_id,
-            "effect": "Cinema Mode",
-        }
-        response = post(
-            self.url_trun_on_light, headers=self.headers, json=json_light_mode_movie
+    def turn_on_light_mode_movie(self) -> None:
+        """
+        Activates the movie mode for the bedroom light.
+        """
+        self._call_service(
+            "light",
+            "turn_on",
+            {"entity_id": self.light_entity_id, "effect": "Cinema Mode"},
         )
-        print(response.text)
 
-    def turn_on_light_mode_entertainment(self):
-        json_light_mode_entertainment = {
-            "entity_id": self.light_entity_id,
-            "effect": "Entertainment Mode",
-        }
-        response = post(
-            self.url_trun_on_light,
-            headers=self.headers,
-            json=json_light_mode_entertainment,
+    def turn_on_light_mode_entertainment(self) -> None:
+        """
+        Activates the entertainment mode for the bedroom light.
+        """
+        self._call_service(
+            "light",
+            "turn_on",
+            {"entity_id": self.light_entity_id, "effect": "Entertainment Mode"},
         )
-        print(response.text)
 
-    def turn_on_light_mode_reception(self):
-        json_light_mode_reception = {
-            "entity_id": self.light_entity_id,
-            "effect": "Reception Mode",
-        }
-        response = post(
-            self.url_trun_on_light,
-            headers=self.headers,
-            json=json_light_mode_reception,
+    def turn_on_light_mode_reception(self) -> None:
+        """
+        Activates the reception mode for the bedroom light.
+        """
+        self._call_service(
+            "light",
+            "turn_on",
+            {"entity_id": self.light_entity_id, "effect": "Reception Mode"},
         )
-        print(response.text)
 
-    def turn_off_fan(self):
-        json = {"entity_id": self.fan_entity_id}
-        response = post(self.url_turn_off_fan, headers=self.headers, json=json)
-        print(response.text)
+    def turn_off_fan(self) -> None:
+        """
+        Turns off the bedroom fan by calling the Home Assistant `fan.turn_off` service.
+        """
+        self._call_service("fan", "turn_off", {"entity_id": self.fan_entity_id})
 
-    def adjust_fan_speed(self, value: int):
-        json = {
-            "entity_id": self.fan_speed_entity_id,
-            "value": value,
-        }
-        response = post(self.url_number_fan_speed, headers=self.headers, json=json)
-        print(response.text)
+    def adjust_fan_speed(self, value: int) -> None:
+        """
+        Adjusts the speed of the bedroom fan.
 
-    def adjust_fan_speed_to_max(self):
+        Args:
+            value (int): The desired speed value for the fan.
+        """
+        self._call_service(
+            "number",
+            "set_value",
+            {"entity_id": self.fan_speed_entity_id, "value": value},
+        )
+
+    def adjust_fan_speed_to_max(self) -> None:
+        """
+        Sets the bedroom fan speed to the maximum value (100).
+        """
         self.adjust_fan_speed(100)
 
-    def adjust_fan_speed_to_min(self):
+    def adjust_fan_speed_to_min(self) -> None:
+        """
+        Sets the bedroom fan speed to the minimum value (1).
+        """
         self.adjust_fan_speed(1)
 
-    def adjust_fan_speed_to_fourth(self):
+    def adjust_fan_speed_to_fourth(self) -> None:
+        """
+        Sets the bedroom fan speed to the fourth preset value (69).
+        """
         self.adjust_fan_speed(69)
