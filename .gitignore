@@ -6,3 +6,4 @@ Voices/**
 **/__pycache__/
 configure.json
 tmp/
+aihome.code-workspace

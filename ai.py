@@ -16,6 +16,7 @@ from libs.bedroom_light import Light_bedroom
 from libs.bedroom_climate import Climate_bedroom
 from libs.websocket_client import Websocket_client_esp32
 from libs.speaker import Speaker
+from libs.homeassistant_vm_manager import VirtualBoxController
 
 os.chdir(os.path.dirname(__file__))
 
@@ -137,6 +138,9 @@ class AI_Server:
     def __init__(self, configure_path: str):
         with open(configure_path, mode="r", encoding="utf-8") as f:
             self.configure = json.load(f)
+        ha_vm_uuid = self.configure["virtualbox"]["ha_vm_uuid"]
+        self.ha_vm_manager = VirtualBoxController(ha_vm_uuid)
+        self.ha_vm_manager.start_vm()
         self.__init_porcupine()
         self.response_user = None
         self.callback_to_response_yes: Callable = None
@@ -354,7 +358,7 @@ class AI_Server:
                     self.callback_to_response_yes = callback_for_yes
                     self.callback_to_response_no = callback_for_no
                     self.activate_response_keyword_recogizers()
-                    break ##############################
+                    break  ##############################
             await asyncio.sleep(60)
 
     # 同步任务示例 - 在单独线程中运行
