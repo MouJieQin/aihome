@@ -89,6 +89,32 @@ class Websocket_client_esp32:
     def get_now_timestamp() -> str:
         return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
+    async def get_ch2o(self, timeout: float = 3, poll_interval: float = 0.1) -> Dict:
+        message = {}
+        message["from"] = "AI_server"
+        id_timestamp = Websocket_client_esp32.get_now_timestamp()
+        message["id"] = id_timestamp
+        message["to"] = "esp32_sensors"
+        message["type"] = "ch2o"
+        txt_message = json.dumps(message, ensure_ascii=False)
+        if not await self.send_message(txt_message):
+            return None
+        counter: float = 0
+        while counter < timeout:
+            if id_timestamp in self.resp_stack.keys():
+                mess = self.resp_stack.pop(id_timestamp)
+                if mess["from"] == "esp32_sensors":
+                    if mess["type"] == "ch2o":
+                        if mess["success"]:
+                            return {
+                                "timestamp": id_timestamp,
+                                "ppb": mess["ppb"],
+                                "mgm3": mess["mgm3"],
+                            }
+            await asyncio.sleep(poll_interval)
+            counter += poll_interval
+        return None
+
     async def get_temperature_humidity(
         self, timeout: float = 5, poll_interval: float = 0.1
     ) -> Dict:
@@ -131,6 +157,10 @@ class Websocket_client_esp32:
                 self.record["timestamp"].append(result["timestamp"])
                 self.record["temperature"].append(result["temperature"])
                 self.record["humidity"].append(result["humidity"])
+
+            result = await self.get_ch2o()
+            if result:
+                print("CH2O: {} ppb    {} mg/m3".format(result["ppb"], result["mgm3"]))
             await asyncio.sleep(sample_interval)
 
     async def get_statistc_temp_hum(self, total_simples: int = 10) -> Dict:
