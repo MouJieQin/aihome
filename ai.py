@@ -3,16 +3,11 @@ from concurrent.futures import ThreadPoolExecutor
 import pvporcupine
 import pyaudio
 import struct
-from time import sleep
 import asyncio
 import json
-import datetime
 import threading
-import sys
 import os
-
-# import logging
-from typing import *
+from typing import Dict, Callable, Optional
 from libs.bedroom_light import LightBedroom
 from libs.bedroom_climate import ClimateBedroom
 from libs.elec_meter_controller import ElecMeterController
@@ -25,66 +20,33 @@ os.chdir(os.path.dirname(__file__))
 
 
 class AI_Server:
-    response_timeout = 10
-    response_time_counter = 0
+    RESPONSE_TIMEOUT = 10
+    RESPONSE_INTERVAL = 1
 
-    def _keyword_recognizers_setup(self):
-        for keyword, items in self.keyword_recognizers.items():
-            items["model"] = speechsdk.KeywordRecognitionModel(items["model_file"])
-            items["recognizer"] = speechsdk.KeywordRecognizer()
-            items["recognized_keyword_cb"] = AI_Server._recognized_keyword_cb(
-                items["keyword"],
-                items["recognizer"],
-                items["model"],
-                items["callback_recognized"],
-            )
-            items["recognizer"].recognized.connect(items["recognized_keyword_cb"])
-            items["recognized_keyword_cb"] = AI_Server._canceled_keyword_cb(
-                items["keyword"]
-            )
-            items["recognizer"].canceled.connect(items["recognized_keyword_cb"])
-        # for key in self.keyword_keep_alive_list:
-        #     keyword_recognize = self.keyword_recognizers[key]
-        #     keyword_recognize["recognizer"].recognize_once_async(
-        #         keyword_recognize["model"]
-        #     )
+    def __init__(self, configure_path: str):
+        self._load_configuration(configure_path)
+        self._init_vm_manager()
+        self._init_porcupine()
+        self._init_devices()
+        self._init_keyword_recognizers()
 
-    def activate_all_keyword_recogizers(self):
-        for keyword, items in self.keyword_recognizers.items():
-            if keyword not in self.keyword_keep_alive_list:
-                items["recognizer"].recognize_once_async(items["model"])
-        AI_Server.response_time_counter = AI_Server.response_timeout
-        self.speaker.play_start_record()
+        self.response_user = None
+        self.callback_to_response_yes: Optional[Callable] = None
+        self.callback_to_response_no: Optional[Callable] = None
 
-    def activate_response_keyword_recogizers(self):
-        for keyword in self.keyword_keep_alive_list:
-            item = self.keyword_recognizers[keyword]
-            item["recognizer"].recognize_once_async(item["model"])
-        AI_Server.response_time_counter = AI_Server.response_timeout
-        self.speaker.play_start_record()
+    def _load_configuration(self, configure_path: str):
+        """Load configuration from the given file path."""
+        with open(configure_path, mode="r", encoding="utf-8") as f:
+            self.configure = json.load(f)
 
-    def stop_all_keyword_recogizers(self):
-        for keyword, items in self.keyword_recognizers.items():
-            items["recognizer"].stop_recognition_async().get()
+    def _init_vm_manager(self):
+        """Initialize the VirtualBox manager and start the VM."""
+        ha_vm_uuid = self.configure["virtualbox"]["ha_vm_uuid"]
+        self.ha_vm_manager = VirtualBoxController(ha_vm_uuid)
+        self.ha_vm_manager.start_vm()
 
-    async def stop_keyword_recogizers(self):
-        interval = 1
-        while True:
-            if AI_Server.response_time_counter > 0:
-                while AI_Server.response_time_counter > 0:
-                    AI_Server.response_time_counter -= interval
-                    print(
-                        "AI_Server.response_time_counter:",
-                        AI_Server.response_time_counter,
-                    )
-                    await asyncio.sleep(interval)
-                for keyword, items in self.keyword_recognizers.items():
-                    if keyword not in self.keyword_keep_alive_list:
-                        items["recognizer"].stop_recognition_async().get()
-                self.speaker.play_end_record()
-            await asyncio.sleep(interval)
-
-    def __init_porcupine(self):
+    def _init_porcupine(self):
+        """Initialize Porcupine for wake word detection."""
         config_porcupine = self.configure["porcupine"]
         self.porcupine = pvporcupine.create(
             access_key=config_porcupine["access_key"],
@@ -99,22 +61,21 @@ class AI_Server:
             input=True,
             frames_per_buffer=self.porcupine.frame_length,
         )
-        self._ai_awake()
+        self._start_ai_awake_thread()
 
-    def _ai_awake(self) -> threading.Thread:
+    def _start_ai_awake_thread(self) -> threading.Thread:
+        """Start the thread for wake word detection."""
+
         def run_ai_awake():
             while True:
-                # 读取音频数据
                 pcm = self.audio_stream.read(
                     self.porcupine.frame_length, exception_on_overflow=False
                 )
                 pcm = struct.unpack_from("h" * self.porcupine.frame_length, pcm)
-                # 处理音频并检测唤醒词
                 result = self.porcupine.process(pcm)
-                # 如果检测到唤醒词
                 if result >= 0:
                     logger.info(f"检测到唤醒词: あすな")
-                    self.activate_all_keyword_recogizers()
+                    self.activate_all_keyword_recognizers()
 
         thread = threading.Thread(target=run_ai_awake)
         thread.daemon = True
@@ -122,25 +83,16 @@ class AI_Server:
         return thread
 
     def _close_porcupine(self):
+        """Close Porcupine resources."""
         if self.porcupine is not None:
             self.porcupine.delete()
-
         if self.audio_stream is not None:
             self.audio_stream.close()
-
         if self.pa is not None:
             self.pa.terminate()
 
-    def __init__(self, configure_path: str):
-        with open(configure_path, mode="r", encoding="utf-8") as f:
-            self.configure = json.load(f)
-        ha_vm_uuid = self.configure["virtualbox"]["ha_vm_uuid"]
-        self.ha_vm_manager = VirtualBoxController(ha_vm_uuid)
-        self.ha_vm_manager.start_vm()
-        self.__init_porcupine()
-        self.response_user = None
-        self.callback_to_response_yes: Callable = None
-        self.callback_to_response_no: Callable = None
+    def _init_devices(self):
+        """Initialize all smart devices."""
         self.light_bedroom = LightBedroom(self.configure)
         self.climate_bedroom = ClimateBedroom(self.configure)
         self.elec_controller = ElecMeterController(self.configure)
@@ -148,8 +100,16 @@ class AI_Server:
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
         self.speaker = Speaker(self.configure)
+
+    def _init_keyword_recognizers(self):
+        """Initialize keyword recognizers."""
         self.keyword_keep_alive_list = ["response_no", "response_yes"]
-        self.keyword_recognizers = {
+        self.keyword_recognizers = self._create_keyword_recognizers()
+        self._setup_keyword_recognizers()
+
+    def _create_keyword_recognizers(self) -> Dict:
+        """Create keyword recognizers configuration."""
+        return {
             "turn_on_light": {
                 "keyword": "开灯",
                 "model_file": "./voices/models/19f55a72-5f72-4334-8e0b-1ae922002559.table",
@@ -244,33 +204,110 @@ class AI_Server:
             "response_no": {
                 "keyword": "不用了",
                 "model_file": "./voices/models/response-no.table",
-                "callback_recognized": lambda: self.callback_to_response_no(),
+                "callback_recognized": lambda: self._call_callback(
+                    self.callback_to_response_no
+                ),
             },
             "response_yes": {
                 "keyword": "好的",
                 "model_file": "./voices/models/response-yes.table",
-                "callback_recognized": lambda: self.callback_to_response_yes(),
+                "callback_recognized": lambda: self._call_callback(
+                    self.callback_to_response_yes
+                ),
             },
         }
-        self._keyword_recognizers_setup()
+
+    def _call_callback(self, callback: Optional[Callable]):
+        """Call the callback function if it's not None."""
+        if callback:
+            callback()
+
+    def _setup_keyword_recognizers(self):
+        """Set up keyword recognizers with models and callbacks."""
+        for key, items in self.keyword_recognizers.items():
+            items["model"] = speechsdk.KeywordRecognitionModel(items["model_file"])
+            items["recognizer"] = speechsdk.KeywordRecognizer()
+            items["recognized_keyword_cb"] = self._recognized_keyword_cb(
+                items["keyword"],
+                items["recognizer"],
+                items["model"],
+                items["callback_recognized"],
+            )
+            items["recognizer"].recognized.connect(items["recognized_keyword_cb"])
+            items["canceled_keyword_cb"] = self._canceled_keyword_cb(items["keyword"])
+            items["recognizer"].canceled.connect(items["canceled_keyword_cb"])
+
+    def activate_all_keyword_recognizers(self):
+        """Activate all keyword recognizers except keep-alive ones."""
+        for key, items in self.keyword_recognizers.items():
+            if key not in self.keyword_keep_alive_list:
+                items["recognizer"].recognize_once_async(items["model"])
+        self._reset_response_time_counter()
+        self.speaker.play_start_record()
+
+    def activate_response_keyword_recognizers(self):
+        """Activate response-related keyword recognizers."""
+        for key in self.keyword_keep_alive_list:
+            item = self.keyword_recognizers[key]
+            item["recognizer"].recognize_once_async(item["model"])
+        self._reset_response_time_counter()
+        self.speaker.play_start_record()
+
+    def stop_all_keyword_recognizers(self):
+        """Stop all keyword recognizers."""
+        for key, items in self.keyword_recognizers.items():
+            items["recognizer"].stop_recognition_async().get()
+
+    async def stop_keyword_recognizers(self):
+        """Stop non-keep-alive keyword recognizers after timeout."""
+        while True:
+            if self._response_time_counter > 0:
+                while self._response_time_counter > 0:
+                    self._response_time_counter -= self.RESPONSE_INTERVAL
+                    logger.debug(
+                        "AI_Server.response_time_counter:",
+                        self._response_time_counter,
+                    )
+                    await asyncio.sleep(self.RESPONSE_INTERVAL)
+                for key, items in self.keyword_recognizers.items():
+                    if key not in self.keyword_keep_alive_list:
+                        items["recognizer"].stop_recognition_async().get()
+                self.speaker.play_end_record()
+            await asyncio.sleep(self.RESPONSE_INTERVAL)
+
+    @property
+    def _response_time_counter(self):
+        return getattr(self.__class__, "response_time_counter", 0)
+
+    @_response_time_counter.setter
+    def _response_time_counter(self, value):
+        setattr(self.__class__, "response_time_counter", value)
+
+    def _reset_response_time_counter(self):
+        self._response_time_counter = self.RESPONSE_TIMEOUT
 
     def turn_on_controller(self):
+        """Turn on the electric controller and speak a message."""
         self.elec_controller.turn_on_controller()
         self.speaker.speak_text("蚊香已开启。")
 
     def turn_off_controller(self):
+        """Turn off the electric controller and speak a message."""
         self.elec_controller.turn_off_controller()
         self.speaker.speak_text("蚊香已关闭。")
 
     def set_response_value(self, val):
+        """Set the user response value."""
         self.response_user = val
 
     @staticmethod
     def _canceled_keyword_cb(keyword: str) -> Callable:
+        """Create a callback for canceled keyword recognition."""
+
         def canceled_keyword_cb(evt):
             result = evt.result
             if result.reason == speechsdk.ResultReason.Canceled:
-                print(f"{keyword} CANCELED: {result.cancellation_details.reason}")
+                logger.info(f"{keyword} CANCELED: {result.cancellation_details.reason}")
 
         return canceled_keyword_cb
 
@@ -280,14 +317,16 @@ class AI_Server:
         recognizer: speechsdk.KeywordRecognizer,
         keyword_model: speechsdk.KeywordRecognitionModel,
         callback: Callable,
-    ):
+    ) -> Callable:
+        """Create a callback for recognized keyword."""
+
         def recognized_keyword_cb(evt):
             result = evt.result
             if result.reason == speechsdk.ResultReason.RecognizedKeyword:
-                print("RECOGNIZED KEYWORD: {}".format(result.text))
-                AI_Server.response_time_counter = AI_Server.response_timeout
+                logger.info("RECOGNIZED KEYWORD: {}".format(result.text))
+                self = AI_Server.__new__(AI_Server)
+                self._reset_response_time_counter()
                 callback()
-                # to recognize keyword again.
                 recognizer.recognize_once_async(keyword_model)
 
         return recognized_keyword_cb
@@ -295,8 +334,9 @@ class AI_Server:
     def auto_cool_mode(
         self,
         temperature: int = 26,
-        total_simples=30,
-    ):
+        total_simples: int = 30,
+    ) -> threading.Thread:
+        """Start the auto cool mode and monitor the temperature and humidity."""
         self.climate_bedroom.fast_cool_mode(temperature=temperature)
         self.light_bedroom.adjust_fan_speed_to_max()
 
@@ -318,9 +358,7 @@ class AI_Server:
                 if not result:
                     await asyncio.sleep(10)
                 else:
-                    print(result)
                     temp_stdev = result["temperature"]["stdev"]
-                    # if temp_stdev < 0.1:
                     if temp_stdev < 0.05:
                         await asyncio.sleep(15)
                         self.speaker.play_receive_response()
@@ -346,6 +384,7 @@ class AI_Server:
         return thread
 
     async def monitor_tem_hum(self):
+        """Monitor the temperature and humidity and prompt user if necessary."""
         total_simples = 30
         await asyncio.sleep(300)
 
@@ -354,7 +393,7 @@ class AI_Server:
             self.callback_to_response_yes = None
 
         def callback_for_no():
-            AI_Server.response_time_counter = 0
+            self._response_time_counter = 0
             self.callback_to_response_no = None
 
         while True:
@@ -372,11 +411,12 @@ class AI_Server:
                     )
                     self.callback_to_response_yes = callback_for_yes
                     self.callback_to_response_no = callback_for_no
-                    self.activate_response_keyword_recogizers()
-                    break  ##############################
+                    self.activate_response_keyword_recognizers()
+                    break
             await asyncio.sleep(60)
 
     async def monitor_ch2o(self):
+        """Monitor the formaldehyde concentration and prompt user if necessary."""
         while True:
             result = await self.ws_client_esp32.get_ch2o()
             if result:
@@ -391,48 +431,41 @@ class AI_Server:
                     await asyncio.sleep(180)
             await asyncio.sleep(3)
 
-    # 同步任务示例 - 在单独线程中运行
     def sync_task(self, stop_event: asyncio.Event):
-        """在单独线程中运行的同步任务示例"""
-        print("同步任务已启动")
+        """A sample synchronous task running in a separate thread."""
+        logger.debug("同步任务已启动")
         while not stop_event.is_set():
-            print("同步任务正在运行...")
-            sleep(6)
-        print("同步任务已停止")
+            logger.debug("同步任务正在运行...")
+        logger.debug("同步任务已停止")
 
-    # 主函数 - 协调所有任务
     async def main(self):
-        # 创建线程池和停止事件
+        """Main function to coordinate all tasks."""
         stop_event = asyncio.Event()
         executor = ThreadPoolExecutor(max_workers=1)
 
-        # 创建并启动所有任务
-        loop = asyncio.get_running_loop()
         await self.ws_client_esp32.connect()
         tasks = [
-            self.stop_keyword_recogizers(),
+            self.stop_keyword_recognizers(),
             # self.monitor_tem_hum(),
             self.monitor_ch2o(),
-            self.ws_client_esp32.receive_messages(),  # WebSocket消息接收任务
-            self.ws_client_esp32.heartbeat_task(),  # 心跳任务
-            # loop.run_in_executor(executor, self.sync_task, stop_event),  # 同步任务
+            self.ws_client_esp32.receive_messages(),
+            self.ws_client_esp32.heartbeat_task(),
+            # asyncio.to_thread(self.sync_task, stop_event),
         ]
 
-        # 运行所有任务，直到其中一个完成或被取消
         try:
             await asyncio.gather(*tasks)
         except KeyboardInterrupt:
-            print("程序被用户中断")
+            logger.warning("The program is interrupted by the user.")
         finally:
-            # 清理资源
             await self.ws_client_esp32.close()
             self._close_porcupine()
             stop_event.set()
             executor.shutdown()
+            logger.info("The program has been terminated.")
 
 
 AI = AI_Server(configure_path="./configure.json")
 
 if __name__ == "__main__":
-    # 启动主事件循环
     asyncio.run(AI.main())

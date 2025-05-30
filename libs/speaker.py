@@ -1,12 +1,14 @@
-from pygame import mixer
 import os
+
+# Set the environment variable before importing pygame
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
+
+from pygame import mixer
 import threading
 import asyncio
 from typing import Dict, Optional
 from libs.log_config import logger
 import azure.cognitiveservices.speech as speechsdk
-
-os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 
 class Speaker:
