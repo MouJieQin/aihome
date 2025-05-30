@@ -157,10 +157,6 @@ class Websocket_client_esp32:
                 self.record["timestamp"].append(result["timestamp"])
                 self.record["temperature"].append(result["temperature"])
                 self.record["humidity"].append(result["humidity"])
-
-            result = await self.get_ch2o()
-            if result:
-                print("CH2O: {} ppb    {} mg/m3".format(result["ppb"], result["mgm3"]))
             await asyncio.sleep(sample_interval)
 
     async def get_statistc_temp_hum(self, total_simples: int = 10) -> Dict:

@@ -88,6 +88,10 @@ private:
     explicit Sensor_ZE08_CH2O(const bool activeMode)
         : wz(Serial2), is_active_mode(activeMode)
     {
+        if (!Serial2)
+        {
+            Serial2.begin(9600);
+        }
         if (is_active_mode)
         {
             wz.activeMode();
@@ -196,6 +200,21 @@ public:
         ws.cleanupClients();
     }
 
+    void read_ch2o()
+    {
+        // For debugging
+        const std::pair<bool, const std::pair<uint16_t, float>> res = ze08->read();
+        if (res.first)
+        {
+            Serial.printf("CH2O: %d ppb, %.2f mg/m3\n", res.second.first, res.second.second);
+        }
+        else
+        {
+            Serial.println("CH2O: read failed");
+        }
+        delay(1000);
+    }
+
     static Websocket_manager *getInstance(const String &ssid, const String &password,
                                           const String &url, const uint16_t port, const uint8_t pin_DHT22)
     {
@@ -253,10 +272,6 @@ private:
         if (!Serial)
         {
             Serial.begin(115200);
-        }
-        if (!Serial2)
-        {
-            Serial2.begin(9600);
         }
 
         Serial.print("Connecting to ");
@@ -457,6 +472,7 @@ void loop()
 {
     // 定期清理断开的客户端
     websocket_manager->cleanupClients();
+    websocket_manager->read_ch2o(); // For debugging
     // 添加一些非阻塞延时，让系统有时间处理其他任务
     delay(10);
 }

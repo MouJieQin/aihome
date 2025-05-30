@@ -376,6 +376,21 @@ class AI_Server:
                     break  ##############################
             await asyncio.sleep(60)
 
+    async def monitor_ch2o(self):
+        while True:
+            result = await self.ws_client_esp32.get_ch2o()
+            if result:
+                print("CH2O: {} ppb    {} mg/m3".format(result["ppb"], result["mgm3"]))
+                if result["mgm3"] > 0.08:
+                    self.speaker.play_receive_response()
+                    self.speaker.speak_text(
+                        "警告！当前室内甲醛浓度为{}mg/m3，建议您立即开窗通风。".format(
+                            result["mgm3"]
+                        )
+                    )
+                    await asyncio.sleep(180)
+            await asyncio.sleep(3)
+
     # 同步任务示例 - 在单独线程中运行
     def sync_task(self, stop_event: asyncio.Event):
         """在单独线程中运行的同步任务示例"""
@@ -397,7 +412,7 @@ class AI_Server:
         tasks = [
             self.stop_keyword_recogizers(),
             # self.monitor_tem_hum(),
-            self.ws_client_esp32.sample_tem_hum(),
+            self.monitor_ch2o(),
             self.ws_client_esp32.receive_messages(),  # WebSocket消息接收任务
             self.ws_client_esp32.heartbeat_task(),  # 心跳任务
             # loop.run_in_executor(executor, self.sync_task, stop_event),  # 同步任务
