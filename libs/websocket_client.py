@@ -3,20 +3,42 @@ import websockets
 import datetime
 import json
 import math
-from typing import *
+from libs.log_config import logger
+from typing import Dict, Any, Optional
 
 
-# WebSocket客户端类 - 处理WebSocket连接和消息收发
-class Websocket_client_esp32:
+class MathUtils:
+    """
+    A utility class for mathematical operations.
+    """
+
     @staticmethod
     def mean(data):
+        """
+        Calculate the mean of a list of numbers.
+
+        Args:
+            data (list): A list of numbers.
+
+        Returns:
+            float: The mean of the data.
+        """
         n = len(data)
         mean = sum(data) / n
         return mean
 
     @staticmethod
     def variance(data):
-        mean = Websocket_client_esp32.mean(data)
+        """
+        Calculate the variance of a list of numbers.
+
+        Args:
+            data (list): A list of numbers.
+
+        Returns:
+            float: The variance of the data.
+        """
+        mean = MathUtils.mean(data)
         n = len(data)
         deviations = [(x - mean) ** 2 for x in data]
         variance = sum(deviations) / n
@@ -24,7 +46,22 @@ class Websocket_client_esp32:
 
     @staticmethod
     def stdev(data):
-        return math.sqrt(Websocket_client_esp32.variance(data))
+        """
+        Calculate the standard deviation of a list of numbers.
+
+        Args:
+            data (list): A list of numbers.
+
+        Returns:
+            float: The standard deviation of the data.
+        """
+        return math.sqrt(MathUtils.variance(data))
+
+
+class Websocket_client_esp32:
+    """
+    WebSocket client class - handles WebSocket connections and message sending/receiving.
+    """
 
     def __init__(self, uri):
         self.uri = uri
@@ -33,117 +70,193 @@ class Websocket_client_esp32:
         self.record = {}
 
     async def connect(self) -> bool:
-        """建立WebSocket连接"""
+        """
+        Establish a WebSocket connection.
+
+        Returns:
+            bool: True if the connection is successful, False otherwise.
+        """
         try:
             self.websocket = await websockets.connect(self.uri)
-            print(f"WebSocket连接已建立: {self.uri}")
+            logger.info(f"WebSocket connection established: {self.uri}")
             return True
         except Exception as e:
-            print(f"WebSocket连接失败: {e}")
+            logger.exception(f"WebSocket connection failed: {e}")
             return False
 
-    async def send_message(self, message) -> bool:
-        """向服务器发送消息"""
+    async def _send_message(self, message) -> bool:
+        """
+        Send a message to the server.
+
+        Args:
+            message (str): The message to send.
+
+        Returns:
+            bool: True if the message is sent successfully, False otherwise.
+        """
         if self.websocket:
             try:
                 await self.websocket.send(message)
-                print(f"发送消息: {message}")
+                logger.debug(f"Sent message: {message}")
                 return True
             except Exception as e:
-                print(f"发送消息失败: {e}")
+                logger.exception(f"Failed to send message: {e}")
                 return False
         return False
 
     async def receive_messages(self):
-        """持续接收服务器消息"""
+        """
+        Continuously receive messages from the server.
+        """
         while True:
             if not self.websocket:
-                print("WebSocket未连接")
+                logger.error("WebSocket is not connected")
             else:
                 try:
-                    # while True:
-                    # message = await self.websocket.recv()
                     async for message in self.websocket:
-                        print(f"收到消息: {message}")
+                        logger.debug(f"Received message: {message}")
                         try:
                             mess = json.loads(message)
                             self.resp_stack[mess["id"]] = mess
                         except json.JSONDecodeError:
-                            print(f"消息解析失败: {message}")
+                            logger.exception(f"Failed to parse message: {message}")
                 except websockets.exceptions.ConnectionClosedOK:
-                    print("WebSocket连接已正常关闭")
+                    logger.info("WebSocket connection closed normally")
                 except websockets.exceptions.ConnectionClosedError as e:
-                    print(f"WebSocket连接意外关闭: {e}")
+                    logger.exception(f"WebSocket connection closed unexpectedly: {e}")
                     self.websocket = None
                 except Exception as e:
-                    print(f"接收消息时出错: {e}")
+                    logger.exception(f"Error receiving message: {e}")
                 finally:
                     await self.close()
             await asyncio.sleep(3)
 
     async def close(self):
+        """
+        Close the WebSocket connection.
+        """
         if self.websocket:
             await self.websocket.close()
 
     @staticmethod
-    def get_now_timestamp() -> str:
+    def _get_now_timestamp() -> str:
+        """
+        Get the current timestamp in a specific format.
+
+        Returns:
+            str: The current timestamp.
+        """
         return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
-    async def get_ch2o(self, timeout: float = 3, poll_interval: float = 0.1) -> Dict:
-        message = {}
-        message["from"] = "AI_server"
-        id_timestamp = Websocket_client_esp32.get_now_timestamp()
-        message["id"] = id_timestamp
-        message["to"] = "esp32_sensors"
-        message["type"] = "ch2o"
+    async def _get_sensor_data(
+        self, message_type: str, timeout: float = 3, poll_interval: float = 0.1
+    ) -> Optional[Dict]:
+        """
+        Get sensor data from the server.
+
+        Args:
+            message_type (str): The type of sensor data to request.
+            timeout (float, optional): The timeout duration in seconds. Defaults to 3.
+            poll_interval (float, optional): The polling interval in seconds. Defaults to 0.1.
+
+        Returns:
+            Optional[Dict]: The sensor data if available, None otherwise.
+        """
+        message = {
+            "from": "AI_server",
+            "id": self._get_now_timestamp(),
+            "to": "esp32_sensors",
+            "type": message_type,
+        }
         txt_message = json.dumps(message, ensure_ascii=False)
-        if not await self.send_message(txt_message):
+        if not await self._send_message(txt_message):
             return None
         counter: float = 0
         while counter < timeout:
-            if id_timestamp in self.resp_stack.keys():
-                mess = self.resp_stack.pop(id_timestamp)
-                if mess["from"] == "esp32_sensors":
-                    if mess["type"] == "ch2o":
-                        if mess["success"]:
-                            return {
-                                "timestamp": id_timestamp,
-                                "ppb": mess["ppb"],
-                                "mgm3": mess["mgm3"],
-                            }
+            if message["id"] in self.resp_stack.keys():
+                mess = self.resp_stack.pop(message["id"])
+                if mess["from"] == "esp32_sensors" and mess["type"] == message_type:
+                    if message_type == "ch2o" and mess["success"]:
+                        return {
+                            "timestamp": message["id"],
+                            "ppb": mess["ppb"],
+                            "mgm3": mess["mgm3"],
+                        }
+                    elif message_type == "humidity_temperature" and mess["temperature"]:
+                        return {
+                            "timestamp": message["id"],
+                            "temperature": mess["temperature"],
+                            "humidity": mess["humidity"],
+                        }
             await asyncio.sleep(poll_interval)
             counter += poll_interval
         return None
+
+    async def get_ch2o(
+        self, timeout: float = 3, poll_interval: float = 0.1
+    ) -> Optional[Dict]:
+        """
+        Get CH2O sensor data from the server.
+
+        Args:
+            timeout (float, optional): The timeout duration in seconds. Defaults to 3.
+            poll_interval (float, optional): The polling interval in seconds. Defaults to 0.1.
+
+        Returns:
+            Optional[Dict]: The CH2O sensor data if available, None otherwise.
+        """
+        return await self._get_sensor_data("ch2o", timeout, poll_interval)
 
     async def get_temperature_humidity(
         self, timeout: float = 5, poll_interval: float = 0.1
-    ) -> Dict:
-        message = {}
-        message["from"] = "AI_server"
-        id_timestamp = Websocket_client_esp32.get_now_timestamp()
-        message["id"] = id_timestamp
-        message["to"] = "esp32_sensors"
-        message["type"] = "humidity_temperature"
-        txt_message = json.dumps(message, ensure_ascii=False)
-        if not await self.send_message(txt_message):
+    ) -> Optional[Dict]:
+        """
+        Get temperature and humidity sensor data from the server.
+
+        Args:
+            timeout (float, optional): The timeout duration in seconds. Defaults to 5.
+            poll_interval (float, optional): The polling interval in seconds. Defaults to 0.1.
+
+        Returns:
+            Optional[Dict]: The temperature and humidity sensor data if available, None otherwise.
+        """
+        return await self._get_sensor_data(
+            "humidity_temperature", timeout, poll_interval
+        )
+
+    async def get_statistc_temp_hum(self, total_simples: int = 10) -> Optional[Dict]:
+        """
+        Get statistical data for temperature and humidity.
+
+        Args:
+            total_simples (int, optional): The number of samples to consider. Defaults to 10.
+
+        Returns:
+            Optional[Dict]: The statistical data for temperature and humidity if available, None otherwise.
+        """
+        samples_tem = self.record["temperature"][-total_simples:]
+        samples_hum = self.record["humidity"][-total_simples:]
+        if not samples_tem:
             return None
-        counter: float = 0
-        while counter < timeout:
-            if id_timestamp in self.resp_stack.keys():
-                mess = self.resp_stack.pop(id_timestamp)
-                if mess["from"] == "esp32_sensors":
-                    if mess["type"] == "humidity_temperature":
-                        if mess["temperature"]:
-                            return {
-                                "timestamp": id_timestamp,
-                                "temperature": mess["temperature"],
-                                "humidity": mess["humidity"],
-                            }
-            await asyncio.sleep(poll_interval)
-            counter += poll_interval
-        return None
+        else:
+            return {
+                "temperature": {
+                    "mean": MathUtils.mean(samples_tem),
+                    "stdev": MathUtils.stdev(samples_tem),
+                },
+                "humidity": {
+                    "mean": MathUtils.mean(samples_hum),
+                    "stdev": MathUtils.stdev(samples_hum),
+                },
+            }
 
     async def sample_tem_hum(self, sample_interval: int = 10):
+        """
+        Continuously sample temperature and humidity data.
+
+        Args:
+            sample_interval (int, optional): The sampling interval in seconds. Defaults to 10.
+        """
         self.record["timestamp"] = []
         self.record["temperature"] = []
         self.record["humidity"] = []
@@ -159,30 +272,17 @@ class Websocket_client_esp32:
                 self.record["humidity"].append(result["humidity"])
             await asyncio.sleep(sample_interval)
 
-    async def get_statistc_temp_hum(self, total_simples: int = 10) -> Dict:
-        samples_tem = self.record["temperature"][-total_simples:]
-        samples_hum = self.record["humidity"][-total_simples:]
-        if not samples_tem:
-            return None
-        else:
-            return {
-                "temperature": {
-                    "mean": Websocket_client_esp32.mean(samples_tem),
-                    "stdev": Websocket_client_esp32.stdev(samples_tem),
-                },
-                "humidity": {
-                    "mean": Websocket_client_esp32.mean(samples_hum),
-                    "stdev": Websocket_client_esp32.stdev(samples_hum),
-                },
-            }
-
-    # 异步任务示例 - 定期执行的心跳任务
     async def heartbeat_task(self, interval=5):
-        """定期向WebSocket服务器发送心跳消息"""
+        """
+        Periodically send a heartbeat message to the WebSocket server.
+
+        Args:
+            interval (int, optional): The interval in seconds between heartbeat messages. Defaults to 5.
+        """
         message = {"message": "heartbeat"}
         heartbeat_mess = json.dumps(message, ensure_ascii=False)
         while True:
-            if not await self.send_message(heartbeat_mess):
+            if not await self._send_message(heartbeat_mess):
                 while not await self.connect():
                     await asyncio.sleep(interval)
             await asyncio.sleep(interval)
