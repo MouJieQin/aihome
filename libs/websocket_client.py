@@ -68,6 +68,7 @@ class Websocket_client_esp32:
         self.websocket = None
         self.resp_stack = {}
         self.record = {}
+        self.print_exception_flag = False
 
     async def connect(self) -> bool:
         """
@@ -79,9 +80,14 @@ class Websocket_client_esp32:
         try:
             self.websocket = await websockets.connect(self.uri)
             logger.info(f"WebSocket connection established: {self.uri}")
+            self.print_exception_flag = False
             return True
         except Exception as e:
-            logger.exception(f"WebSocket connection failed: {e}")
+            if self.print_exception_flag:
+                logger.exception(f"WebSocket connection failed.")
+            else:
+                self.print_exception_flag = True
+                logger.exception(f"WebSocket connection failed: {e}")
             return False
 
     async def _send_message(self, message) -> bool:

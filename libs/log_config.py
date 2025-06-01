@@ -1,5 +1,6 @@
 # Import the logging module which provides a flexible framework for emitting log messages
 import logging
+
 # Import TimedRotatingFileHandler from logging.handlers to create log files that rotate at certain intervals
 from logging.handlers import TimedRotatingFileHandler
 
@@ -8,6 +9,7 @@ class CustomFormatter(logging.Formatter):
     """
     A custom formatter class for logging that adds color to log messages based on their level.
     """
+
     # ANSI escape code for grey text
     grey = "\x1b[38;20m"
     # ANSI escape code for green text
@@ -59,9 +61,13 @@ def setup_logger():
     """
     # Get the root logger
     logger = logging.getLogger()
-    # Set the root logger's level to DEBUG to enable debug messages
-    # logger.setLevel(logging.INFO)
-    logger.setLevel(logging.DEBUG)
+    import os
+
+    log_level = os.getenv("LOG_LEVEL", "INFO")
+    if log_level in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+        logger.setLevel(getattr(logging, log_level))
+    else:
+        logger.setLevel(logging.INFO)
 
     # Create a TimedRotatingFileHandler that rotates log files daily
     file_handler = TimedRotatingFileHandler(
