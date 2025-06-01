@@ -60,7 +60,8 @@ def setup_logger():
     # Get the root logger
     logger = logging.getLogger()
     # Set the root logger's level to DEBUG to enable debug messages
-    logger.setLevel(logging.INFO)
+    # logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
 
     # Create a TimedRotatingFileHandler that rotates log files daily
     file_handler = TimedRotatingFileHandler(

@@ -24,18 +24,8 @@ public:
   // Get singleton instance
   static Sensor_ZE08_CH2O *getInstance(bool activeMode = true)
   {
-    if (instance == nullptr)
-    {
-      instance = new Sensor_ZE08_CH2O(activeMode);
-    }
-    return instance;
-  }
-
-  // Destroy singleton instance
-  static void destroyInstance()
-  {
-    delete instance;
-    instance = nullptr;
+    static Sensor_ZE08_CH2O instance(activeMode); // Use static local variable for thread-safe singleton
+    return &instance;
   }
 
   // Set sensor to active mode
@@ -44,12 +34,14 @@ public:
     is_active_mode = true;
     wz.activeMode();
   }
+
   // Set sensor to passive mode
   void passiveMode()
   {
     is_active_mode = false;
     wz.passiveMode();
   }
+
   // Read CH2O data
   const std::pair<bool, const std::pair<uint16_t, float>> read()
   {
@@ -88,13 +80,7 @@ private:
   {
     return ppb * 0.00125;
   }
-  // Request sensor data
-  void requestRead()
-  {
-    wz.requestRead();
-  }
 
-private:
   // Private constructor
   explicit Sensor_ZE08_CH2O(const bool activeMode)
       : wz(Serial2), is_active_mode(activeMode)
@@ -121,14 +107,10 @@ private:
     Serial2.end();
   }
 
-private:
   WZ wz;
   WZ::DATA hcho_data;
   bool is_active_mode;
-  static Sensor_ZE08_CH2O *instance;
 };
-
-Sensor_ZE08_CH2O *Sensor_ZE08_CH2O::instance = nullptr;
 
 // Sensor class for DHT22 sensor
 class Sensor_DHT22
@@ -137,25 +119,15 @@ public:
   // Get singleton instance
   static Sensor_DHT22 *getInstance(const uint8_t pin)
   {
-    if (instance == nullptr)
-    {
-      instance = new Sensor_DHT22(pin);
-      instance->setup();
-    }
-    return instance;
-  }
-
-  // Destroy singleton instance
-  static void destroyInstance()
-  {
-    delete instance;
-    instance = nullptr;
+    static Sensor_DHT22 instance(pin); // Use static local variable for thread-safe singleton
+    instance.setup();
+    return &instance;
   }
 
   // Read humidity
   const float readHumidity()
   {
-    // 减少延时，避免阻塞系统
+    // Reduce delay to avoid blocking the system
     delay(20);
     return dht.readHumidity();
   }
@@ -163,7 +135,7 @@ public:
   // Read temperature
   const float readTemperature()
   {
-    // 减少延时，避免阻塞系统
+    // Reduce delay to avoid blocking the system
     delay(20);
     return dht.readTemperature();
   }
@@ -171,7 +143,7 @@ public:
   // Get temperature and humidity
   const std::pair<float, float> get_temperature_humidity()
   {
-    // 减少延时，避免阻塞系统
+    // Reduce delay to avoid blocking the system
     delay(20);
     float temperature = dht.readTemperature();
     float humidity = dht.readHumidity();
@@ -189,15 +161,11 @@ private:
   // Disable copy constructor and assignment operator
   Sensor_DHT22(const Sensor_DHT22 &) = delete;
   Sensor_DHT22 &operator=(const Sensor_DHT22 &) = delete;
-  ~Sensor_DHT22()
-  {
-  }
 
-private:
   // Initialize sensor
   void setup()
   {
-    // 只初始化一次串口
+    // Initialize serial port only once
     if (!Serial)
     {
       Serial.begin(115200);
@@ -205,21 +173,15 @@ private:
     dht.begin();
   }
 
-private:
   uint8_t pin;
   DHT dht;
-  static Sensor_DHT22 *instance;
 };
-
-Sensor_DHT22 *Sensor_DHT22::instance = nullptr;
 
 class NonblockingDelayer
 {
 public:
   explicit NonblockingDelayer() : lastUpdate(ULONG_MAX) {}
-  ~NonblockingDelayer()
-  {
-  }
+
   bool is_expired_when_delay(const unsigned long ms)
   {
     if (lastUpdate == ULONG_MAX)
@@ -241,7 +203,6 @@ private:
   NonblockingDelayer(const NonblockingDelayer &) = delete;
   NonblockingDelayer &operator=(const NonblockingDelayer &) = delete;
 
-private:
   unsigned long lastUpdate;
 };
 
@@ -249,10 +210,25 @@ private:
 class Websocket_manager
 {
 public:
+  // Get singleton instance
+  static Websocket_manager *getInstance(const String &ssid, const String &password,
+                                        const String &url,
+                                        const uint16_t port,
+                                        const String &mqtt_server, const uint16_t mqtt_port,
+                                        const String &mqtt_user, const String &mqtt_password,
+                                        const uint8_t pin_DHT22)
+  {
+    static Websocket_manager instance_(ssid, password, url, port, mqtt_server, mqtt_port,
+                                       mqtt_user, mqtt_password,
+                                       pin_DHT22); // Use static local variable for thread-safe singleton
+    instance = &instance_;
+    return instance;
+  }
+
   // Clean up disconnected WebSocket clients
   void cleanupClients()
   {
-    // 清理断开的客户端
+    // Clean up disconnected clients
     ws.cleanupClients();
   }
 
@@ -272,42 +248,11 @@ public:
     delay(1000);
   }
 
-  // Get singleton instance
-  static Websocket_manager *getInstance(const String &ssid, const String &password,
-                                        const String &url,
-                                        const uint16_t port,
-                                        const String &mqtt_server, const uint16_t mqtt_port,
-                                        const String &mqtt_user, const String &mqtt_password,
-                                        const uint8_t pin_DHT22)
-  {
-    if (instance == nullptr)
-    {
-      instance = new Websocket_manager(ssid, password, url, port, mqtt_server, mqtt_port,
-                                       mqtt_user, mqtt_password,
-                                       pin_DHT22);
-      instance->setup();
-    }
-    return instance;
-  }
-
-  // Destroy singleton instance
-  static void destroyInstance()
-  {
-    if (instance)
-    {
-      instance->disconnectAllClients();
-      instance->dht22->destroyInstance();
-      instance->ze08->destroyInstance();
-      delete instance;
-      instance = nullptr;
-    }
-  }
-
   // Disconnect all WebSocket clients
   void disconnectAllClients()
   {
     ws.closeAll();
-    // 给客户端一些时间处理断开
+    // Give clients some time to handle disconnection
     delay(100);
   }
 
@@ -332,11 +277,11 @@ private:
         mqtt_server(mqtt_server), mqtt_port(mqtt_port),
         mqtt_user(mqtt_user), mqtt_password(mqtt_password),
         espClient(), client(espClient), delayer_mqtt_push(),
-        dht22(nullptr), ze08(nullptr)
+        dht22(Sensor_DHT22::getInstance(pin_DHT22)),
+        ze08(Sensor_ZE08_CH2O::getInstance(true))
   {
     client.setServer(mqtt_server.c_str(), mqtt_port);
-    dht22 = Sensor_DHT22::getInstance(pin_DHT22);
-    ze08 = Sensor_ZE08_CH2O::getInstance(true);
+    setup();
   }
 
   // Disable copy constructor and assignment operator
@@ -345,7 +290,7 @@ private:
 
   ~Websocket_manager()
   {
-    // 确保在销毁前断开所有连接
+    // Ensure all connections are disconnected before destruction
     disconnectAllClients();
     server.end();
   }
@@ -362,10 +307,10 @@ private:
     }
     client.loop();
 
-    // 读取DHT22数据
-    std::pair<float, float> tem_hum = instance->dht22->get_temperature_humidity();
+    // Read DHT22 data
+    std::pair<float, float> tem_hum = dht22->get_temperature_humidity();
     if (!isnan(tem_hum.first))
-    { // 仅在数据有效时发布
+    { // Publish only when data is valid
       char tem_str[8];
       dtostrf(tem_hum.first, 1, 2, tem_str);
       Serial.printf("Temperature: %s°C\n", tem_str);
@@ -378,11 +323,11 @@ private:
       Serial.printf("Humidity: %s%%\n", hum_str);
       client.publish("homeassistant/sensor/dht22/humidity", hum_str);
     }
-    const std::pair<bool, const std::pair<uint16_t, float>> ch2o = instance->ze08->read();
+    const std::pair<bool, const std::pair<uint16_t, float>> ch2o = ze08->read();
     if (ch2o.first)
     {
       char ch2o_str[10];
-      dtostrf(ch2o.second.second, 1, 5, ch2o_str); // 保留5位小数
+      dtostrf(ch2o.second.second, 1, 5, ch2o_str); // Keep 5 decimal places
       Serial.printf("CH2O: %s mg/m³\n", ch2o_str);
       client.publish("homeassistant/sensor/ze08_ch2o/state", ch2o_str);
     }
@@ -405,26 +350,25 @@ private:
     {
       return true;
     }
-    Serial.println("尝试连接MQTT服务器...");
+    Serial.println("Attempting to connect to MQTT server...");
     if (client.connect("ESP32Client", mqtt_user.c_str(), mqtt_password.c_str()))
     {
-      Serial.println("MQTT连接成功");
+      Serial.println("MQTT connection successful");
       publish_mqtt_discovery();
       return true;
     }
     else
     {
-      Serial.print("MQTT连接失败，错误码= ");
+      Serial.print("MQTT connection failed, error code= ");
       Serial.println(client.state());
       return false;
     }
-    return false;
   }
 
   // Initialize Wi-Fi, WebSocket, and MQTT
   void setup()
   {
-    // 只初始化一次串口
+    // Initialize serial port only once
     if (!Serial)
     {
       Serial.begin(115200);
@@ -455,11 +399,12 @@ private:
   // Handle WebSocket messages
   static void handle_websocket_message(AsyncWebSocket *server, AsyncWebSocketClient *client, void *arg, uint8_t *data, size_t len)
   {
-    // 检查实例是否存在
-    if (instance == nullptr || client == nullptr)
+
+    // Check if instance and client exist
+    if (!instance || !client)
       return;
 
-    // 检查客户端是否有效
+    // Check if client is ready to send data
     if (!client->canSend())
     {
       Serial.printf("Client #%u is not ready to send data\n", client->id());
@@ -469,9 +414,17 @@ private:
     AwsFrameInfo *info = (AwsFrameInfo *)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT)
     {
-      // 确保字符串有终止符
-      data[len] = 0;
-      DynamicJsonDocument doc(512);
+      // Ensure the string has a null terminator
+      if (len < 512)
+      {
+        data[len] = 0;
+      }
+      else
+      {
+        data[512] = 0;
+      }
+      // Replace DynamicJsonDocument with JsonDocument
+      JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data);
 
       if (error)
@@ -488,7 +441,8 @@ private:
         if (strcmp(type, "humidity_temperature") == 0)
         {
           std::pair<float, float> th = instance->dht22->get_temperature_humidity();
-          DynamicJsonDocument doc_resp(512);
+          // Replace DynamicJsonDocument with JsonDocument
+          JsonDocument doc_resp;
           doc_resp["from"] = "esp32_sensors";
           doc_resp["to"] = "AI_server";
           doc_resp["id"] = doc["id"];
@@ -503,9 +457,10 @@ private:
         }
         else if (strcmp(type, "ch2o") == 0)
         {
-          // 处理甲醛浓度查询
+          // Handle formaldehyde concentration query
           const std::pair<bool, const std::pair<uint16_t, float>> res = instance->ze08->read();
-          DynamicJsonDocument doc_resp(512);
+          // Replace DynamicJsonDocument with JsonDocument
+          JsonDocument doc_resp;
           doc_resp["from"] = "esp32_sensors";
           doc_resp["to"] = "AI_server";
           doc_resp["id"] = doc["id"];
@@ -527,7 +482,7 @@ private:
   static void event_handler_static(AsyncWebSocket *server, AsyncWebSocketClient *client,
                                    AwsEventType type, void *arg, uint8_t *data, size_t len)
   {
-    if (client == nullptr)
+    if (!client)
       return;
 
     switch (type)
@@ -538,7 +493,7 @@ private:
 
     case WS_EVT_DISCONNECT:
       Serial.printf("WebSocket client #%u disconnected\n", client->id());
-      // 这里可以添加客户端断开后的清理操作
+      // Cleanup operations can be added here after client disconnection
       break;
 
     case WS_EVT_DATA:
@@ -551,7 +506,7 @@ private:
 
     case WS_EVT_ERROR:
       Serial.printf("WebSocket client #%u error: %s\n", client->id(), (char *)data);
-      // 发生错误时可以主动断开客户端
+      // Actively disconnect the client when an error occurs
       if (client->canSend())
       {
         client->close();
@@ -560,7 +515,6 @@ private:
     }
   }
 
-private:
   String ssid;
   String password;
   String url;
@@ -582,7 +536,7 @@ private:
 Websocket_manager *Websocket_manager::instance = nullptr;
 
 Websocket_manager *websocket_manager;
-// 示例使用方法
+// Example usage
 uint8_t Sensor_HC_SR501_pin = 26;
 bool led_state = 0;
 const uint8_t led_pin = 2;
@@ -600,28 +554,28 @@ void setup()
   const char *mqtt_user = "mosquitto";
   const char *mqtt_password = "mosquitto_mqtt";
 
-  // 创建单例实例
+  // Create singleton instance
   websocket_manager = Websocket_manager::getInstance(ssid, password, "/ws", 80,
                                                      mqtt_server, mqtt_port,
                                                      mqtt_user, mqtt_password, 4);
 }
 
-// 在程序结束时调用
+// Called at the end of the program
 void end()
 {
-  // 确保安全销毁实例
+  // Ensure the instance is safely destroyed
   if (websocket_manager)
   {
-    Websocket_manager::destroyInstance();
+    // No need to call destroyInstance as singleton is managed by static local variable
     websocket_manager = nullptr;
   }
 }
 
 void loop()
 {
-  // 定期清理断开的客户端
+  // Regularly clean up disconnected clients
   websocket_manager->cleanupClients();
   websocket_manager->mqtt_push();
-  // 添加一些非阻塞延时，让系统有时间处理其他任务
+  // Add some non-blocking delay to allow the system time to handle other tasks
   delay(10);
 }
