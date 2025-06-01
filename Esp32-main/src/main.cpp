@@ -213,6 +213,38 @@ private:
 
 Sensor_DHT22 *Sensor_DHT22::instance = nullptr;
 
+class NonblockingDelayer
+{
+public:
+  explicit NonblockingDelayer() : lastUpdate(ULONG_MAX) {}
+  ~NonblockingDelayer()
+  {
+  }
+  bool is_expired_when_delay(const unsigned long ms)
+  {
+    if (lastUpdate == ULONG_MAX)
+    {
+      lastUpdate = millis();
+      return false;
+    }
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastUpdate >= ms)
+    {
+      lastUpdate = currentMillis;
+      return true;
+    }
+    return false;
+  }
+
+private:
+  // Disable copy constructor and assignment operator
+  NonblockingDelayer(const NonblockingDelayer &) = delete;
+  NonblockingDelayer &operator=(const NonblockingDelayer &) = delete;
+
+private:
+  unsigned long lastUpdate;
+};
+
 // Class to manage WebSocket and MQTT communication
 class Websocket_manager
 {
@@ -282,8 +314,10 @@ public:
   // Push sensor data to MQTT
   void mqtt_push()
   {
-    mqtt_push_imple();
-    delay(5000);
+    if (delayer_mqtt_push.is_expired_when_delay(7000))
+    {
+      mqtt_push_imple();
+    }
   }
 
 private:
@@ -297,7 +331,7 @@ private:
         server(port), ws(url),
         mqtt_server(mqtt_server), mqtt_port(mqtt_port),
         mqtt_user(mqtt_user), mqtt_password(mqtt_password),
-        espClient(), client(espClient),
+        espClient(), client(espClient), delayer_mqtt_push(),
         dht22(nullptr), ze08(nullptr)
   {
     client.setServer(mqtt_server.c_str(), mqtt_port);
@@ -323,7 +357,6 @@ private:
     {
       if (!connect_mqtt())
       {
-        delay(5000);
         return;
       }
     }
@@ -542,6 +575,7 @@ private:
   AsyncWebSocket ws;
   Sensor_DHT22 *dht22;
   Sensor_ZE08_CH2O *ze08;
+  NonblockingDelayer delayer_mqtt_push;
   static Websocket_manager *instance;
 };
 
