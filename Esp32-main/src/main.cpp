@@ -61,9 +61,9 @@ public:
     if (res)
     {
       float ugm3 = ppb_to_mgm3(hcho_data.HCHO_PPB);
-      return std::make_pair(true, std::make_pair(hcho_data.HCHO_PPB, ugm3));
+      return {true, {hcho_data.HCHO_PPB, ugm3}};
     }
-    return std::make_pair(false, std::make_pair(0, 0));
+    return {false, {0, 0}};
   }
 
   // Read CH2O data with timeout
@@ -77,9 +77,9 @@ public:
     if (res)
     {
       float ugm3 = ppb_to_mgm3(hcho_data.HCHO_PPB);
-      return std::make_pair(true, std::make_pair(hcho_data.HCHO_PPB, ugm3));
+      return {true, {hcho_data.HCHO_PPB, ugm3}};
     }
-    return std::make_pair(false, std::make_pair(0, 0));
+    return {false, {0, 0}};
   }
 
 private:
@@ -175,7 +175,7 @@ public:
     delay(20);
     float temperature = dht.readTemperature();
     float humidity = dht.readHumidity();
-    return std::make_pair(temperature, humidity);
+    return {temperature, humidity};
   }
 
 private:
@@ -437,16 +437,8 @@ private:
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT)
     {
       // 确保字符串有终止符
-      if (len < 255)
-      {
-        data[len] = 0;
-      }
-      else
-      {
-        data[254] = 0;
-      }
-
-      StaticJsonDocument<512> doc;
+      data[len] = 0;
+      DynamicJsonDocument doc(512);
       DeserializationError error = deserializeJson(doc, data);
 
       if (error)
@@ -463,7 +455,7 @@ private:
         if (strcmp(type, "humidity_temperature") == 0)
         {
           std::pair<float, float> th = instance->dht22->get_temperature_humidity();
-          DynamicJsonDocument doc_resp(512); // 使用动态文档避免堆栈溢出
+          DynamicJsonDocument doc_resp(512);
           doc_resp["from"] = "esp32_sensors";
           doc_resp["to"] = "AI_server";
           doc_resp["id"] = doc["id"];
@@ -471,18 +463,10 @@ private:
           doc_resp["temperature"] = th.first;
           doc_resp["humidity"] = th.second;
 
-          // 使用动态缓冲区
-          char *output = (char *)malloc(512);
-          if (output)
-          {
-            serializeJson(doc_resp, output, 512);
-            instance->ws.text(client->id(), output);
-            free(output);
-          }
-          else
-          {
-            Serial.println("Memory allocation failed for JSON response");
-          }
+          std::string output;
+          output.reserve(512);
+          serializeJson(doc_resp, output);
+          instance->ws.text(client->id(), output.c_str());
         }
         else if (strcmp(type, "ch2o") == 0)
         {
@@ -497,17 +481,10 @@ private:
           doc_resp["ppb"] = res.second.first;
           doc_resp["mgm3"] = res.second.second;
 
-          char *output = (char *)malloc(512);
-          if (output)
-          {
-            serializeJson(doc_resp, output, 512);
-            instance->ws.text(client->id(), output);
-            free(output);
-          }
-          else
-          {
-            Serial.println("Memory allocation failed for JSON response");
-          }
+          std::string output;
+          output.reserve(512);
+          serializeJson(doc_resp, output);
+          instance->ws.text(client->id(), output.c_str());
         }
       }
     }
