@@ -79,51 +79,71 @@ class LightBedroom:
         """
         self._call_service("light", "turn_off", {"entity_id": self.light_entity_id})
 
+    def switch_light(self, value: bool) -> None:
+        """
+        Switches the bedroom light on or off based on the provided boolean value.
+        Args:
+            value (bool): If True, turns on the light; if False, turns off the light.
+        """
+        if value:
+            self.turn_on_light()
+        else:
+            self.turn_off_light()
+
+    def set_light_mode(self, mode: str) -> None:
+        """
+        Activates the light mode for the bedroom light.
+        """
+        self._call_service(
+            "light", "turn_on", {"entity_id": self.light_entity_id, "effect": mode}
+        )
+
     def turn_on_light_mode_night(self) -> None:
         """
         Activates the night light mode for the bedroom light.
         """
-        self._call_service(
-            "light",
-            "turn_on",
-            {"entity_id": self.light_entity_id, "effect": "Night Light"},
-        )
+        self.set_light_mode("Night Light")
 
     def turn_on_light_mode_movie(self) -> None:
         """
         Activates the movie mode for the bedroom light.
         """
-        self._call_service(
-            "light",
-            "turn_on",
-            {"entity_id": self.light_entity_id, "effect": "Cinema Mode"},
-        )
+        self.set_light_mode("Cinema Mode")
 
     def turn_on_light_mode_entertainment(self) -> None:
         """
         Activates the entertainment mode for the bedroom light.
         """
-        self._call_service(
-            "light",
-            "turn_on",
-            {"entity_id": self.light_entity_id, "effect": "Entertainment Mode"},
-        )
+        self.set_light_mode("Entertainment Mode")
 
     def turn_on_light_mode_reception(self) -> None:
         """
         Activates the reception mode for the bedroom light.
         """
-        self._call_service(
-            "light",
-            "turn_on",
-            {"entity_id": self.light_entity_id, "effect": "Reception Mode"},
-        )
+        self.set_light_mode("Reception Mode")
 
     def turn_off_fan(self) -> None:
         """
         Turns off the bedroom fan by calling the Home Assistant `fan.turn_off` service.
         """
         self._call_service("fan", "turn_off", {"entity_id": self.fan_entity_id})
+
+    def turn_on_fan(self) -> None:
+        """
+        Turns on the bedroom fan by calling the Home Assistant `fan.turn_on` service.
+        """
+        self._call_service("fan", "turn_on", {"entity_id": self.fan_entity_id})
+
+    def switch_fan(self, value: bool) -> None:
+        """
+        Switches the bedroom fan on or off based on the provided boolean value.
+        Args:
+            value (bool): If True, turns on the fan; if False, turns off the fan.
+        """
+        if value:
+            self.turn_on_fan()
+        else:
+            self.turn_off_fan()
 
     def adjust_fan_speed(self, value: int) -> None:
         """
@@ -137,6 +157,15 @@ class LightBedroom:
             "set_value",
             {"entity_id": self.fan_speed_entity_id, "value": value},
         )
+
+    def adjust_fan_speed_to_preset_value(self, value: int) -> None:
+        """
+        Adjusts the speed of the bedroom fan to a preset value.
+        Args:
+            value (int): The preset speed value for the fan.
+        """
+        preset_values = [1, 22, 46, 70, 86, 100]
+        self.adjust_fan_speed(preset_values[value])
 
     def adjust_fan_speed_to_max(self) -> None:
         """

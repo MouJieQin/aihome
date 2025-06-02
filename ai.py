@@ -13,6 +13,8 @@ from libs.bedroom_climate import ClimateBedroom
 from libs.elec_meter_controller import ElecMeterController
 from libs.websocket_client import Websocket_client_esp32
 from libs.speaker import Speaker
+from libs.recognizer import Recognizer
+from libs.ai_assistant import AIassistant
 from libs.homeassistant_vm_manager import VirtualBoxController
 from libs.log_config import logger
 
@@ -29,6 +31,7 @@ class AI_Server:
         self._init_porcupine()
         self._init_devices()
         self._init_keyword_recognizers()
+        self._init_ai_assistant()
 
         self.response_user = None
         self.callback_to_response_yes: Optional[Callable] = None
@@ -44,6 +47,13 @@ class AI_Server:
         ha_vm_uuid = self.configure["virtualbox"]["ha_vm_uuid"]
         self.ha_vm_manager = VirtualBoxController(ha_vm_uuid)
         self.ha_vm_manager.start_vm()
+
+    def _init_ai_assistant(self):
+        """Initialize the AI assistant."""
+        self.supported_commands = self._create_supported_function()
+        supported_commands_ = self._create_supported_function_for_ai_assistant()
+        supported_commands_str = json.dumps(supported_commands_, ensure_ascii=False)
+        self.ai_assistant = AIassistant(self.configure, supported_commands_str)
 
     def _init_porcupine(self):
         """Initialize Porcupine for wake word detection."""
@@ -100,12 +110,277 @@ class AI_Server:
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
         self.speaker = Speaker(self.configure)
+        self.recognizer = Recognizer(self.configure, self._recognized_callback)
 
     def _init_keyword_recognizers(self):
         """Initialize keyword recognizers."""
         self.keyword_keep_alive_list = ["response_no", "response_yes"]
         self.keyword_recognizers = self._create_keyword_recognizers()
         self._setup_keyword_recognizers()
+
+    def _recognized_callback(self, cur_recognized_text: str):
+        """Callback function for recognized keywords."""
+        prefix = "开启"
+        if cur_recognized_text.startswith(prefix):
+            try:
+                l = len(prefix)
+                speed = cur_recognized_text[l : l + 4].strip()
+                speed_presets = [
+                    "一级风速",
+                    "二级风速",
+                    "三级风速",
+                    "四级风速",
+                    "五级风速",
+                    "六级风速",
+                ]
+                if speed in speed_presets:
+                    speed = speed_presets.index(speed) + 1
+                    self.light_bedroom.adjust_fan_speed_to_preset_value(speed)
+                    self._reset_response_time_counter()
+                else:
+                    logger.error("Invalid speed preset")
+            except ValueError:
+                logger.error("Invalid speed value")
+        # self.activate_response_keyword_recognizers()
+
+    def chat_with_ai_assistant(self, user_input: str) -> Optional[str]:
+        """Chat with AI assistant and return the response."""
+        response = self.ai_assistant.chat(user_input)
+        if response:
+            self._handle_ai_assistant_response(response)
+        return response
+
+    def _handle_ai_assistant_response(self, response: str):
+        """Handle AI assistant response."""
+        commands = json.loads(response)
+        self.speaker.start_speaking_text(commands["あすな"])
+        self._handle_ai_assistant_response_imple(commands, self.supported_commands)
+        import time
+
+        time.sleep(10)
+
+    def _handle_ai_assistant_response_imple(self, commands: Dict, commands_: Dict):
+        """Handle AI assistant response."""
+        for key, items in commands.items():
+            if key != "あすな":
+                if "args" in items.keys():
+                    commands_[key]["function"](**items["args"])
+                else:
+                    self._handle_ai_assistant_response_imple(items, commands_[key])
+
+    def _create_supported_function_for_ai_assistant(self) -> Dict:
+        """Create a dictionary of supported functions for AI assistant."""
+        supported_functions = self._create_supported_function()
+        self._create_supported_function_for_ai_assistant_imple(supported_functions)
+        return supported_functions
+
+    def _create_supported_function_for_ai_assistant_imple(
+        self, supported_functions: Dict
+    ):
+        """Create a dictionary of supported functions for AI assistant."""
+        for key, items in supported_functions.items():
+            if "function" in items:
+                supported_functions[key]["function"] = items["function"].__name__
+            else:
+                self._create_supported_function_for_ai_assistant_imple(items)
+
+    def _create_supported_function(self) -> Dict:
+        """Create a dictionary of supported functions."""
+        return {
+            "吊扇": {
+                "风速": {
+                    "function": self.light_bedroom.adjust_fan_speed_to_preset_value,
+                    "args": {
+                        "value": {
+                            "type": "int",
+                            "is_necessary": True,
+                            "range": "[0,5]",
+                            "condidates": {
+                                0: {
+                                    "name": "一级风速",
+                                },
+                                1: {
+                                    "name": "二级风速",
+                                },
+                                2: {
+                                    "name": "三级风速",
+                                },
+                                3: {
+                                    "name": "四级风速",
+                                },
+                                4: {
+                                    "name": "五级风速",
+                                },
+                                5: {
+                                    "name": "六级风速",
+                                },
+                            },
+                        }
+                    },
+                },
+                "开关": {
+                    "function": self.light_bedroom.switch_fan,
+                    "args": {
+                        "value": {
+                            "type": "bool",
+                            "is_necessary": True,
+                            "condidates": {True: {"name": "开"}, False: {"name": "关"}},
+                        }
+                    },
+                },
+            },
+            "灯光": {
+                "模式": {
+                    "function": self.light_bedroom.set_light_mode,
+                    "args": {
+                        "mode": {
+                            "type": "str",
+                            "is_necessary": True,
+                            "condidates": {
+                                "Cinema Mode": {"name": "影院模式"},
+                                "Entertainment Mode": {"name": "娱乐模式"},
+                                "Reception Mode": {"name": "会客模式"},
+                                "Night Light": {"name": "夜灯模式"},
+                            },
+                        }
+                    },
+                },
+                "开关": {
+                    "function": self.light_bedroom.switch_light,
+                    "args": {
+                        "value": {
+                            "type": "bool",
+                            "is_necessary": True,
+                            "condidates": {True: {"name": "开"}, False: {"name": "关"}},
+                        }
+                    },
+                },
+            },
+            "空调": {
+                "高级模式": {
+                    "健康模式": {
+                        "function": self.climate_bedroom.switch_health_mode,
+                        "args": {
+                            "value": {
+                                "type": "bool",
+                                "is_necessary": True,
+                                "condidates": {
+                                    True: {"name": "开"},
+                                    False: {"name": "关"},
+                                },
+                            }
+                        },
+                    },
+                    "新风模式": {
+                        "function": self.climate_bedroom.switch_fresh_air_mode,
+                        "args": {
+                            "value": {
+                                "type": "bool",
+                                "is_necessary": True,
+                                "condidates": {
+                                    True: {"name": "开"},
+                                    False: {"name": "关"},
+                                },
+                            }
+                        },
+                    },
+                    "静音模式": {
+                        "function": self.climate_bedroom.switch_quiet_mode,
+                        "value": {
+                            "type": "bool",
+                            "is_necessary": True,
+                            "condidates": {
+                                True: {"name": "开"},
+                                False: {"name": "关"},
+                            },
+                        },
+                    },
+                },
+                "开关": {
+                    "function": self.climate_bedroom.switch_climate,
+                    "args": {
+                        "value": {
+                            "type": "bool",
+                            "is_necessary": True,
+                            "condidates": {
+                                True: {"name": "开"},
+                                False: {"name": "关"},
+                            },
+                        }
+                    },
+                },
+                "风速": {
+                    "function": self.climate_bedroom.set_fan_mode,
+                    "args": {
+                        "fan_mode": {
+                            "type": "str",
+                            "is_necessary": True,
+                            "condidates": {
+                                "low": {"name": "低速"},
+                                "medium low": {"name": "中低速"},
+                                "medium": {"name": "中速"},
+                                "medium high": {"name": "中高速"},
+                                "high": {"name": "高速"},
+                                "auto": {"name": "自动"},
+                            },
+                        }
+                    },
+                },
+                "扫风": {
+                    "function": self.climate_bedroom.set_swing_mode,
+                    "args": {
+                        "swing_mode": {
+                            "type": "str",
+                            "is_necessary": True,
+                            "condidates": {
+                                "vertical": {"name": "上下扫风"},
+                                "horizontal": {"name": "左右扫风"},
+                                "both": {"name": "上下左右扫风"},
+                                "off": {"name": "关闭扫风"},
+                            },
+                        }
+                    },
+                },
+                "温度设置": {
+                    "function": self.climate_bedroom.set_temperature,
+                    "args": {
+                        "temperature": {
+                            "type": "int",
+                            "is_necessary": True,
+                            "range": "[8,30]",
+                        }
+                    },
+                },
+            },
+            "错误": {
+                "function": self._handle_error,
+                "args": {
+                    "error_type": {
+                        "type": "str",
+                        "is_necessary": True,
+                        "condidates": {
+                            "unsupported": {"name": "不支持该指令"},
+                            "confused": {"name": "无法识别指令"},
+                        },
+                    }
+                },
+            },
+        }
+
+    def _handle_error(self, error_type: str):
+        """Handle errors based on the error type."""
+        if error_type == "unsupported":
+            self._handle_unsupported_function()
+        elif error_type == "confused":
+            self._handle_confused_function()
+
+    def _handle_unsupported_function(self):
+        """Handle unsupported functions."""
+        logger.error("不支持该指令")
+
+    def _handle_confused_function(self):
+        """Handle confused functions."""
+        logger.error("无法识别指令")
 
     def _create_keyword_recognizers(self) -> Dict:
         """Create keyword recognizers configuration."""
@@ -244,6 +519,7 @@ class AI_Server:
                 items["recognizer"].recognize_once_async(items["model"])
         self._reset_response_time_counter()
         self.speaker.play_start_record()
+        self.recognizer.start_recognizer()
 
     def activate_response_keyword_recognizers(self):
         """Activate response-related keyword recognizers."""
@@ -272,6 +548,7 @@ class AI_Server:
                 for key, items in self.keyword_recognizers.items():
                     if key not in self.keyword_keep_alive_list:
                         items["recognizer"].stop_recognition_async().get()
+                self.recognizer.stop_recognizer()
                 self.speaker.play_end_record()
             await asyncio.sleep(self.RESPONSE_INTERVAL)
 
@@ -468,4 +745,9 @@ class AI_Server:
 AI = AI_Server(configure_path="./configure.json")
 
 if __name__ == "__main__":
-    asyncio.run(AI.main())
+    AI.chat_with_ai_assistant(
+        "三级风俗。空调温度设置为26度。健康模式开启。灯光模式调为。夜灯模式。"
+    )
+    # j = AI.create_supported_function_for_ai_assistant()
+    # print(json.dumps(j, ensure_ascii=False))
+    # asyncio.run(AI.main())

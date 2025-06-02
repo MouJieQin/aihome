@@ -79,34 +79,74 @@ class ClimateBedroom:
         Args:
             temperature (int, optional): The desired temperature. Defaults to 25.
         """
+        self.set_preset_mode("none")
+        self.set_hvac_mode("cool")
+        self.set_fan_mode("high")
+        self.set_temperature(temperature)
+        self.set_swing_mode("off")
+        self.turn_off_health_mode()
+        self.turn_off_fresh_air_mode()
+        self.turn_off_quiet_mode()
+
+    def set_preset_mode(self, preset_mode: str) -> None:
+        """
+        Sets the preset mode for the bedroom climate device.
+        Args:
+            preset_mode (str): The desired preset mode (e.g., 'none','eco','comfort').
+        """
         self._call_service(
             "climate",
             "set_preset_mode",
-            {"entity_id": self.climate_entity_id, "preset_mode": "none"},
+            {"entity_id": self.climate_entity_id, "preset_mode": preset_mode},
         )
+
+    def set_swing_mode(self, swing_mode: str) -> None:
+        """
+        Sets the swing mode for the bedroom climate device.
+        Args:
+            swing_mode (str): The desired swing mode (e.g., 'horizontal', 'vertical').
+        """
         self._call_service(
             "climate",
-            "set_hvac_mode",
-            {"entity_id": self.climate_entity_id, "hvac_mode": "cool"},
+            "set_swing_mode",
+            {"entity_id": self.climate_entity_id, "swing_mode": swing_mode},
         )
-        self._call_service(
-            "climate",
-            "set_fan_mode",
-            {"entity_id": self.climate_entity_id, "fan_mode": "high"},
-        )
+
+    def set_temperature(self, temperature: int) -> None:
+        """
+        Sets the temperature for the bedroom climate device.
+        Args:
+            temperature (int): The desired temperature.
+        """
         self._call_service(
             "climate",
             "set_temperature",
             {"entity_id": self.climate_entity_id, "temperature": temperature},
         )
+
+    def set_hvac_mode(self, hvac_mode: str) -> None:
+        """
+        Sets the HVAC mode for the bedroom climate device.
+        Args:
+            hvac_mode (str): The desired HVAC mode (e.g., 'cool', 'heat', 'off').
+        """
         self._call_service(
             "climate",
-            "set_swing_mode",
-            {"entity_id": self.climate_entity_id, "swing_mode": "off"},
+            "set_hvac_mode",
+            {"entity_id": self.climate_entity_id, "hvac_mode": hvac_mode},
         )
-        self.turn_off_health_mode()
-        self.turn_off_fresh_air_mode()
-        self.turn_off_quiet_mode()
+
+    def set_fan_mode(self, fan_mode: str) -> None:
+        """
+        Sets the fan mode for the bedroom climate device.
+        Args:
+            fan_mode (str): The desired fan mode (e.g., 'low', 'medium', 'high').
+        """
+        self._call_service(
+            "climate",
+            "set_fan_mode",
+            {"entity_id": self.climate_entity_id, "fan_mode": fan_mode},
+        )
 
     def turn_on_climate(self) -> None:
         """
@@ -119,6 +159,17 @@ class ClimateBedroom:
         Turns off the bedroom climate device.
         """
         self._call_service("climate", "turn_off", {"entity_id": self.climate_entity_id})
+
+    def switch_climate(self, value: bool) -> None:
+        """
+        Switches the bedroom climate device on or off based on the provided boolean value.
+        Args:
+            value (bool): If True, turns on the climate; if False, turns off the climate.
+        """
+        if value:
+            self.turn_on_climate()
+        else:
+            self.turn_off_climate()
 
     def toggle_fresh_air_mode(self) -> None:
         """
@@ -144,6 +195,17 @@ class ClimateBedroom:
             "switch", "turn_off", {"entity_id": self.entity_id_fresh_air_mode}
         )
 
+    def switch_fresh_air_mode(self, value: bool) -> None:
+        """
+        Switches the fresh air mode for the bedroom climate device.
+        Args:
+            value (bool): If True, turns on the fresh air mode; if False, turns off the fresh air mode.
+        """
+        if value:
+            self.turn_on_fresh_air_mode()
+        else:
+            self.turn_off_fresh_air_mode()
+
     def toggle_health_mode(self) -> None:
         """
         Toggles the health mode for the bedroom climate device.
@@ -151,6 +213,33 @@ class ClimateBedroom:
         self._call_service(
             "switch", "toggle", {"entity_id": self.entity_id_health_mode}
         )
+
+    def turn_on_health_mode(self) -> None:
+        """
+        Turns on the health mode for the bedroom climate device.
+        """
+        self._call_service(
+            "switch", "turn_on", {"entity_id": self.entity_id_health_mode}
+        )
+
+    def turn_off_health_mode(self) -> None:
+        """
+        Turns off the health mode for the bedroom climate device.
+        """
+        self._call_service(
+            "switch", "turn_off", {"entity_id": self.entity_id_health_mode}
+        )
+
+    def switch_health_mode(self, value: bool) -> None:
+        """
+        Switches the health mode for the bedroom climate device.
+        Args:
+            value (bool): If True, turns on the health mode; if False, turns off the health mode.
+        """
+        if value:
+            self.turn_on_health_mode()
+        else:
+            self.turn_off_health_mode()
 
     def toggle_quiet_mode(self) -> None:
         """
@@ -174,21 +263,16 @@ class ClimateBedroom:
             "switch", "turn_off", {"entity_id": self.entity_id_quiet_mode}
         )
 
-    def turn_on_health_mode(self) -> None:
+    def switch_quiet_mode(self, value: bool) -> None:
         """
-        Turns on the health mode for the bedroom climate device.
+        Switches the quiet mode for the bedroom climate device.
+        Args:
+            value (bool): If True, turns on the quiet mode; if False, turns off the quiet mode.
         """
-        self._call_service(
-            "switch", "turn_on", {"entity_id": self.entity_id_health_mode}
-        )
-
-    def turn_off_health_mode(self) -> None:
-        """
-        Turns off the health mode for the bedroom climate device.
-        """
-        self._call_service(
-            "switch", "turn_off", {"entity_id": self.entity_id_health_mode}
-        )
+        if value:
+            self.turn_on_quiet_mode()
+        else:
+            self.turn_off_quiet_mode()
 
     def get_entity_state(self, entity_id: str) -> Dict:
         """
@@ -201,17 +285,8 @@ class ClimateBedroom:
             Dict: The state of the entity.
         """
         try:
-            state = self.client.get_state(entity_id)
+            state = self.client.get_state(entity_id)  # type: ignore
             return state
         except Exception as e:
             logger.exception(e)
             return {}
-
-
-# configure = {}
-# import json
-
-# with open("./configure.json", mode="r", encoding="utf-8") as f:
-#     configure = json.load(f)
-# x = ClimateBedroom(configure)
-# x.fast_cool_mode()
