@@ -359,7 +359,7 @@ class AI_Server:
                     await asyncio.sleep(10)
                 else:
                     temp_stdev = result["temperature"]["stdev"]
-                    if temp_stdev < 0.05:
+                    if temp_stdev < 0.07:
                         await asyncio.sleep(15)
                         self.speaker.play_receive_response()
                         self.speaker.speak_text(

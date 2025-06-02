@@ -104,6 +104,9 @@ class ClimateBedroom:
             "set_swing_mode",
             {"entity_id": self.climate_entity_id, "swing_mode": "off"},
         )
+        self.turn_off_health_mode()
+        self.turn_off_fresh_air_mode()
+        self.turn_off_quiet_mode()
 
     def turn_on_climate(self) -> None:
         """
@@ -123,6 +126,22 @@ class ClimateBedroom:
         """
         self._call_service(
             "switch", "toggle", {"entity_id": self.entity_id_fresh_air_mode}
+        )
+
+    def turn_on_fresh_air_mode(self) -> None:
+        """
+        Turns on the fresh air mode for the bedroom climate device.
+        """
+        self._call_service(
+            "switch", "turn_on", {"entity_id": self.entity_id_fresh_air_mode}
+        )
+
+    def turn_off_fresh_air_mode(self) -> None:
+        """
+        Turns off the fresh air mode for the bedroom climate device.
+        """
+        self._call_service(
+            "switch", "turn_off", {"entity_id": self.entity_id_fresh_air_mode}
         )
 
     def toggle_health_mode(self) -> None:

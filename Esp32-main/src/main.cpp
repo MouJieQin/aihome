@@ -336,11 +336,11 @@ private:
   void publish_mqtt_discovery()
   {
     client.publish("homeassistant/sensor/dht22_temperature/config",
-                   "{\"name\":\"DHT22 Temperature\",\"unique_id\":\"dht22_temp_001\",\"state_topic\":\"homeassistant/sensor/dht22/temperature\",\"unit_of_measurement\":\"°C\",\"device_class\":\"temperature\"}", true);
+                   "{\"name\":\"DHT22 Temperature\",\"unique_id\":\"dht22_temp_001\",\"state_topic\":\"homeassistant/sensor/dht22/temperature\",\"unit_of_measurement\":\"°C\",\"device_class\":\"temperature\",\"state_class\":\"measurement\"}", true);
     client.publish("homeassistant/sensor/dht22_humidity/config",
-                   "{\"name\":\"DHT22 Humidity\",\"unique_id\":\"dht22_hum_001\",\"state_topic\":\"homeassistant/sensor/dht22/humidity\",\"unit_of_measurement\":\"%\",\"device_class\":\"humidity\"}", true);
+                   "{\"name\":\"DHT22 Humidity\",\"unique_id\":\"dht22_hum_001\",\"state_topic\":\"homeassistant/sensor/dht22/humidity\",\"unit_of_measurement\":\"%\",\"device_class\":\"humidity\",\"state_class\":\"measurement\"}", true);
     client.publish("homeassistant/sensor/ze08_ch2o/config",
-                   "{\"name\":\"ZE08 CH2O\",\"unique_id\":\"ze08_ch2o_001\",\"state_topic\":\"homeassistant/sensor/ze08_ch2o/state\",\"unit_of_measurement\":\"mg/m³\",\"device_class\":\"volatile_organic_compounds\"}", true);
+                   "{\"name\":\"ZE08 CH2O\",\"unique_id\":\"ze08_ch2o_001\",\"state_topic\":\"homeassistant/sensor/ze08_ch2o/state\",\"unit_of_measurement\":\"mg/m³\",\"device_class\":\"volatile_organic_compounds\",\"state_class\":\"measurement\"}", true);
   }
 
   // Connect to MQTT server
