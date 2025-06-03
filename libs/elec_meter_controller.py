@@ -87,6 +87,17 @@ class ElecMeterController:
             "switch", "turn_off", {"entity_id": self.switch_status_entity_id}
         )
 
+    def switch_controller(self, value: bool) -> None:
+        """
+        Switches the electricity meter controller on or off based on the provided value.
+        Args:
+            value (bool): If True, turns on the controller. If False, turns off the controller.
+        """
+        if value:
+            self.turn_on_controller()
+        else:
+            self.turn_off_controller()
+
     def get_state_controller_switch(self) -> bool:
         """
         Retrieves the state of the electricity meter controller switch.

@@ -271,12 +271,27 @@ class AI_Server:
                     },
                     "静音模式": {
                         "function": self.climate_bedroom.switch_quiet_mode,
-                        "value": {
-                            "type": "bool",
-                            "is_necessary": True,
-                            "condidates": {
-                                True: {"name": "开"},
-                                False: {"name": "关"},
+                        "args": {
+                            "value": {
+                                "type": "bool",
+                                "is_necessary": True,
+                                "condidates": {
+                                    True: {"name": "开"},
+                                    False: {"name": "关"},
+                                },
+                            },
+                        },
+                    },
+                    "面板灯光": {
+                        "function": self.climate_bedroom.switch_panel_light,
+                        "args": {
+                            "value": {
+                                "type": "bool",
+                                "is_necessary": True,
+                                "condidates": {
+                                    True: {"name": "开"},
+                                    False: {"name": "关"},
+                                },
                             },
                         },
                     },
@@ -336,6 +351,22 @@ class AI_Server:
                         }
                     },
                 },
+            },
+            "插座": {
+                "开关": {
+                    "function": self.elec_controller.switch_controller,
+                    "description": "目前控制电蚊香的开关",
+                    "args": {
+                        "value": {
+                            "type": "bool",
+                            "is_necessary": True,
+                            "condidates": {
+                                True: {"name": "开"},
+                                False: {"name": "关"},
+                            },
+                        }
+                    },
+                }
             },
             "错误": {
                 "function": self._handle_error,

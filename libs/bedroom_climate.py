@@ -56,6 +56,7 @@ class ClimateBedroom:
             "switch_fresh_air_mode"
         ]
         self.entity_id_quiet_mode = climate_config["entity_id"]["switch_quiet_mode"]
+        self.entity_id_panel_light = climate_config["entity_id"]["switch_panel_light"]
 
     def _call_service(self, domain: str, service: str, data: Dict[str, Any]) -> None:
         """
@@ -170,6 +171,33 @@ class ClimateBedroom:
             self.turn_on_climate()
         else:
             self.turn_off_climate()
+
+    def turn_on_panel_light(self) -> None:
+        """
+        Turns on the panel light for the bedroom climate device.
+        """
+        self._call_service(
+            "switch", "turn_on", {"entity_id": self.entity_id_panel_light}
+        )
+
+    def turn_off_panel_light(self) -> None:
+        """
+        Turns off the panel light for the bedroom climate device.
+        """
+        self._call_service(
+            "switch", "turn_off", {"entity_id": self.entity_id_panel_light}
+        )
+
+    def switch_panel_light(self, value: bool) -> None:
+        """
+        Switches the panel light for the bedroom climate device.
+        Args:
+            value (bool): If True, turns on the panel light; if False, turns off the panel light.
+        """
+        if value:
+            self.turn_on_panel_light()
+        else:
+            self.turn_off_panel_light()
 
     def toggle_fresh_air_mode(self) -> None:
         """

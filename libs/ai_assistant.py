@@ -11,6 +11,7 @@ class AIassistant:
             base_url=self.volcengine["base_url"], api_key=self.volcengine["api_key"]
         )
         self.systenm_prompt = self._create_system_prompt(supported_commands)
+        self.messages = [{"role": "system", "content": self.systenm_prompt}]
 
     def _create_system_prompt(self, supported_commands: str) -> str:
         return (
@@ -51,11 +52,11 @@ class AIassistant:
         )
 
     def _create_message(self, user_input: str) -> list:
-        messages = [
-            {"role": "system", "content": self.systenm_prompt},
-            {"role": "user", "content": user_input},
-        ]
-        return messages
+        self.messages.append({"role": "user", "content": user_input})
+        if len(self.messages) > 20:
+            self.messages.pop(1)
+            self.messages.pop(1)
+        return self.messages
 
     def chat(self, user_input: str) -> Optional[str]:
         try:

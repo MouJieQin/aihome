@@ -46,7 +46,7 @@ class Recognizer:
 
     def stop_recognizer(self):
         self.is_stopping_recognizer = True
-        self.auto_speech_recognizer.stop_continuous_recognition()
+        self.auto_speech_recognizer.stop_continuous_recognition_async()
 
     def _azure_stt_input_auto_recognizing(self, evt):
         cur_recognized_text = evt.result.text
