@@ -64,7 +64,10 @@ class AIassistant:
             response = self.client.chat.completions.create(
                 model=self.volcengine["model"], messages=messages, stream=False
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if content:
+                self.messages.append({"role": "assistant", "content": content})
+            return content
         except Exception as e:
             logger.exception(e)
             return None

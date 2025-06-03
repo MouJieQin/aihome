@@ -309,6 +309,25 @@ class AI_Server:
                         }
                     },
                 },
+                "自定义模式": {
+                    "制冷": {
+                        "function": self.auto_cool_mode,
+                        "description": "先全速制冷，通过室内温度的标准差判断温度稳定后自动进入健康模式和静音模式。",
+                        "args": {
+                            "temperature": {
+                                "type": "int",
+                                "description": "目标温度，单位为摄氏度",
+                                "is_necessary": False,
+                                "default": 25,
+                                "range": "[8,30]",
+                            },
+                            "total_sample": {
+                                "type": "int",
+                                "is_necessary": False,
+                            },
+                        },
+                    }
+                },
                 "风速": {
                     "function": self.climate_bedroom.set_fan_mode,
                     "args": {
@@ -459,7 +478,7 @@ class AI_Server:
                 "keyword": "开启空调",
                 "model_file": "./voices/models/turn-on-climate.table",
                 "callback_recognized": lambda: self.auto_cool_mode(
-                    temperature=25, total_simples=18
+                    temperature=25, total_sample=18
                 ),
             },
             "turn_off_cliamte": {
@@ -627,7 +646,7 @@ class AI_Server:
     def auto_cool_mode(
         self,
         temperature: int = 26,
-        total_simples: int = 30,
+        total_sample: int = 30,
     ) -> threading.Thread:
         """Start the auto cool mode and monitor the temperature and humidity."""
         self.climate_bedroom.fast_cool_mode(temperature=temperature)
@@ -635,7 +654,7 @@ class AI_Server:
 
         async def auto_cool_mode_monitor():
             await asyncio.sleep(1)
-            result = await self.ws_client_esp32.get_statistc_temp_hum(total_simples)
+            result = await self.ws_client_esp32.get_statistc_temp_hum(total_sample)
             self.speaker.speak_text(
                 "已全速启动空调和吊扇，目标温度为{:.1f}摄氏度。".format(temperature)
             )
@@ -647,7 +666,7 @@ class AI_Server:
                 )
             await asyncio.sleep(300)
             while True:
-                result = await self.ws_client_esp32.get_statistc_temp_hum(total_simples)
+                result = await self.ws_client_esp32.get_statistc_temp_hum(total_sample)
                 if not result:
                     await asyncio.sleep(10)
                 else:
@@ -678,7 +697,7 @@ class AI_Server:
 
     async def monitor_tem_hum(self):
         """Monitor the temperature and humidity and prompt user if necessary."""
-        total_simples = 30
+        total_sample = 30
         await asyncio.sleep(300)
 
         def callback_for_yes():
@@ -690,7 +709,7 @@ class AI_Server:
             self.callback_to_response_no = None
 
         while True:
-            result = await self.ws_client_esp32.get_statistc_temp_hum(total_simples)
+            result = await self.ws_client_esp32.get_statistc_temp_hum(total_sample)
             if result:
                 tem = result["temperature"]["mean"]
                 hum = result["humidity"]["mean"]
