@@ -282,16 +282,16 @@ class AI_Server:
                             },
                         },
                     },
-                    "面板灯光": {
-                        "function": self.climate_bedroom.switch_panel_light,
-                        "args": {
-                            "value": {
-                                "type": "bool",
-                                "is_necessary": True,
-                                "condidates": {
-                                    True: {"name": "开"},
-                                    False: {"name": "关"},
-                                },
+                },
+                "面板灯光": {
+                    "function": self.climate_bedroom.switch_panel_light,
+                    "args": {
+                        "value": {
+                            "type": "bool",
+                            "is_necessary": True,
+                            "condidates": {
+                                True: {"name": "开"},
+                                False: {"name": "关"},
                             },
                         },
                     },
@@ -553,6 +553,7 @@ class AI_Server:
         #     if key not in self.keyword_keep_alive_list:
         #         items["recognizer"].recognize_once_async(items["model"])
         self._reset_response_time_counter()
+        self.recognizer.stop_recognizer_sync()
         self.speaker.play_start_record()
         self.recognizer.start_recognizer()
 
