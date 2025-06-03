@@ -141,13 +141,13 @@ class ClimateBedroom(HomeAssistantDevice):
         """
         Turns on the bedroom climate device.
         """
-        self._turn_on(self.climate_entity_id)
+        self._turn_on(self.climate_entity_id, "climate")
 
     def turn_off_climate(self) -> None:
         """
         Turns off the bedroom climate device.
         """
-        self._turn_off(self.climate_entity_id)
+        self._turn_off(self.climate_entity_id, "climate")
 
     def switch_climate(self, value: bool) -> None:
         """
@@ -156,7 +156,7 @@ class ClimateBedroom(HomeAssistantDevice):
         Args:
             value (bool): If True, turns on the climate; if False, turns off the climate.
         """
-        self._switch(self.climate_entity_id, value)
+        self._switch(self.climate_entity_id, value, "climate")
 
     def turn_on_panel_light(self) -> None:
         """
@@ -291,3 +291,17 @@ class ClimateBedroom(HomeAssistantDevice):
             bool: True if the quiet mode is on, False otherwise.
         """
         return self._get_state(self.entity_id_quiet_mode)
+
+    def get_states(self) -> Dict:
+        """
+        Retrieves the states of the bedroom climate device and its switches.
+        Returns:
+            Dict: The states of the bedroom climate device and its switches.
+        """
+        return {
+            "climate": self._get_entity_state(self.climate_entity_id),
+            "fresh_air_mode": self._get_entity_state(self.entity_id_fresh_air_mode),
+            "health_mode": self._get_entity_state(self.entity_id_health_mode),
+            "quiet_mode": self._get_entity_state(self.entity_id_quiet_mode),
+            "panel_light": self._get_entity_state(self.entity_id_panel_light),
+        }

@@ -17,6 +17,7 @@ from libs.recognizer import Recognizer
 from libs.ai_assistant import AIassistant
 from libs.homeassistant_vm_manager import VirtualBoxController
 from libs.log_config import logger
+from datetime import datetime
 
 os.chdir(os.path.dirname(__file__))
 
@@ -24,6 +25,15 @@ os.chdir(os.path.dirname(__file__))
 class AI_Server:
     RESPONSE_TIMEOUT = 10
     RESPONSE_INTERVAL = 1
+
+    class DateTimeEncoder(json.JSONEncoder):
+        def default(self, o):
+            if isinstance(o, datetime):
+                return o.isoformat()
+            try:
+                return super().default(o)
+            except TypeError:
+                return str(o)
 
     def __init__(self, configure_path: str):
         self._load_configuration(configure_path)
@@ -122,13 +132,13 @@ class AI_Server:
         """Callback function for recognized keywords."""
         self.recognizer.stop_recognizer()
         if len(cur_recognized_text) > 1:
-            self.chat_with_ai_assistant(cur_recognized_text)
+            self._chat_with_ai_assistant(cur_recognized_text)
 
-    def chat_with_ai_assistant(self, user_input: str) -> Optional[str]:
+    def _chat_with_ai_assistant(self, user_input: str) -> Optional[str]:
         """Chat with AI assistant and return the response."""
         logger.info(f"User input: {user_input}")
         self.speaker.play_send_message()
-        response = self.ai_assistant.chat(user_input)
+        response = self.ai_assistant.chat(user_input, self.json_states_of_all_devices())
         logger.info(f"Assistant response: {response}")
         self.speaker.play_receive_response()
         if response:
@@ -387,13 +397,16 @@ class AI_Server:
                     },
                 }
             },
-            "错误": {
-                "function": self._handle_error,
+            "其它": {
+                "function": self._handle_others,
                 "args": {
-                    "error_type": {
+                    "type": {
                         "type": "str",
                         "is_necessary": True,
                         "condidates": {
+                            "query": {
+                                "name": "查询家电的状态，直接在「あすな」的回复中给出查询结果"
+                            },
                             "unsupported": {"name": "不支持该指令"},
                             "confused": {"name": "无法识别指令"},
                         },
@@ -402,12 +415,18 @@ class AI_Server:
             },
         }
 
-    def _handle_error(self, error_type: str):
+    def _handle_others(self, type: str):
         """Handle errors based on the error type."""
-        if error_type == "unsupported":
+        if type == "unsupported":
             self._handle_unsupported_function()
-        elif error_type == "confused":
+        elif type == "confused":
             self._handle_confused_function()
+        elif type == "query":
+            self._handle_query_function()
+
+    def _handle_query_function(self):
+        """Handle query functions."""
+        logger.info("查询家电的状态")
 
     def _handle_unsupported_function(self):
         """Handle unsupported functions."""
@@ -416,6 +435,22 @@ class AI_Server:
     def _handle_confused_function(self):
         """Handle confused functions."""
         logger.error("无法识别指令")
+
+    def json_states_of_all_devices(self) -> str:
+        """Get states of all devices."""
+        return json.dumps(
+            self.get_states_of_all_devices(),
+            ensure_ascii=False,
+            cls=self.DateTimeEncoder,
+        )
+
+    def get_states_of_all_devices(self) -> Dict:
+        """Get states of all devices."""
+        return {
+            "light_bedroom": self.light_bedroom.get_states(),
+            "climate_bedroom": self.climate_bedroom.get_states(),
+            "elec_controller": self.elec_controller.get_states(),
+        }
 
     def _create_keyword_recognizers(self) -> Dict:
         """Create keyword recognizers configuration."""
@@ -761,7 +796,6 @@ class AI_Server:
 AI = AI_Server(configure_path="./configure.json")
 
 if __name__ == "__main__":
-    # AI.chat_with_ai_assistant(
-    #     "三级风俗。空调温度设置为26度。健康模式开启。灯光模式调为。夜灯模式。"
-    # )
+    # print(AI.get_states_of_all_devices())
+    # print(json.dumps(AI.get_states_of_all_devices(), cls=DateTimeEncoder))
     asyncio.run(AI.main())

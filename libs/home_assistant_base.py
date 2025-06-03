@@ -1,5 +1,5 @@
 from homeassistant_api import Client
-from typing import Dict, Any
+from typing import Dict, Optional, Any
 from libs.log_config import logger
 
 
@@ -37,15 +37,15 @@ class HomeAssistantDevice:
         except Exception as e:
             logger.exception(e)
 
-    def _turn_on(self, entity_id: str) -> None:
+    def _turn_on(self, entity_id: str, domain: str = "switch") -> None:
         """Turns on the device."""
-        self._call_service("switch", "turn_on", {"entity_id": entity_id})
+        self._call_service(domain, "turn_on", {"entity_id": entity_id})
 
-    def _turn_off(self, entity_id: str) -> None:
+    def _turn_off(self, entity_id: str, domain: str = "switch") -> None:
         """Turns off the device."""
-        self._call_service("switch", "turn_off", {"entity_id": entity_id})
+        self._call_service(domain, "turn_off", {"entity_id": entity_id})
 
-    def _switch(self, entity_id: str, value: bool) -> None:
+    def _switch(self, entity_id: str, value: bool, domain: str = "switch") -> None:
         """
         Switches the device state.
 
@@ -54,9 +54,9 @@ class HomeAssistantDevice:
             value (bool): True to turn on, False to turn off.
         """
         if value:
-            self._turn_on(entity_id)
+            self._turn_on(entity_id, domain)
         else:
-            self._turn_off(entity_id)
+            self._turn_off(entity_id, domain)
 
     def _toggle(self, entity_id: str) -> None:
         """Toggles the device state."""
@@ -82,8 +82,12 @@ class HomeAssistantDevice:
             Dict: The entity state.
         """
         try:
-            state = self.client.get_state(entity_id)  # type: ignore
-            return state
+            state = self.client.get_state(entity_id=entity_id)
+            if state:
+                return dict(state)
+            else:
+                logger.error(f"Entity {entity_id} not found.")
+                return None  # type: ignore
         except Exception as e:
             logger.exception(e)
-            return {}
+            return None  # type: ignore

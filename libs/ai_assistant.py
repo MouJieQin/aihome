@@ -51,16 +51,23 @@ class AIassistant:
         """
         )
 
-    def _create_message(self, user_input: str) -> list:
-        self.messages.append({"role": "user", "content": user_input})
+    def _create_message(self, user_input: str, devices_states: str) -> list:
+        if not devices_states:
+            devices_states = "暂无"
+        content = f"""
+        用户的输入：{user_input}
+        以下是智能家居设备的状态信息：{devices_states}
+        """
+        logger.info(f"AI assistant input: {content}")
+        self.messages.append({"role": "user", "content": content})
         if len(self.messages) > 20:
             self.messages.pop(1)
             self.messages.pop(1)
         return self.messages
 
-    def chat(self, user_input: str) -> Optional[str]:
+    def chat(self, user_input: str, devices_states: str = "") -> Optional[str]:
         try:
-            messages = self._create_message(user_input)
+            messages = self._create_message(user_input, devices_states)
             response = self.client.chat.completions.create(
                 model=self.volcengine["model"], messages=messages, stream=False
             )

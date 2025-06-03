@@ -54,13 +54,13 @@ class LightBedroom(HomeAssistantDevice):
         """
         Turns on the bedroom light.
         """
-        self._turn_on(self.light_entity_id)
+        self._turn_on(self.light_entity_id, "light")
 
     def turn_off_light(self) -> None:
         """
         Turns off the bedroom light.
         """
-        self._turn_off(self.light_entity_id)
+        self._turn_off(self.light_entity_id, "light")
 
     def switch_light(self, value: bool) -> None:
         """
@@ -69,7 +69,7 @@ class LightBedroom(HomeAssistantDevice):
         Args:
             value (bool): If True, turns on the light; if False, turns off the light.
         """
-        self._switch(self.light_entity_id, value)
+        self._switch(self.light_entity_id, value, "light")
 
     def set_light_mode(self, mode: str) -> None:
         """
@@ -86,13 +86,13 @@ class LightBedroom(HomeAssistantDevice):
         """
         Turns on the bedroom fan.
         """
-        self._turn_on(self.fan_entity_id)
+        self._turn_on(self.fan_entity_id, "fan")
 
     def turn_off_fan(self) -> None:
         """
         Turns off the bedroom fan.
         """
-        self._turn_off(self.fan_entity_id)
+        self._turn_off(self.fan_entity_id, "fan")
 
     def switch_fan(self, value: bool) -> None:
         """
@@ -101,7 +101,7 @@ class LightBedroom(HomeAssistantDevice):
         Args:
             value (bool): If True, turns on the fan; if False, turns off the fan.
         """
-        self._switch(self.fan_entity_id, value)
+        self._switch(self.fan_entity_id, value, "fan")
 
     def adjust_fan_speed(self, value: int) -> None:
         """
@@ -116,7 +116,7 @@ class LightBedroom(HomeAssistantDevice):
             {"entity_id": self.fan_speed_entity_id, "value": value},
         )
 
-    def adjust_fan_speed_to_preset_value(self, index: int) -> None:
+    def adjust_fan_speed_to_preset_value(self, value: int) -> None:
         """
         Adjusts the speed of the bedroom fan to a preset value.
 
@@ -124,10 +124,10 @@ class LightBedroom(HomeAssistantDevice):
             index (int): The index of the preset speed value for the fan.
         """
         preset_values = [1, 22, 46, 70, 86, 100]
-        if 0 <= index < len(preset_values):
-            self.adjust_fan_speed(preset_values[index])
+        if 0 <= value < len(preset_values):
+            self.adjust_fan_speed(preset_values[value])
         else:
-            logger.error(f"Index {index} out of range for preset values")
+            logger.error(f"Index {value} out of range for preset values")
 
     def adjust_fan_speed_to_max(self) -> None:
         """
@@ -146,3 +146,15 @@ class LightBedroom(HomeAssistantDevice):
         Sets the bedroom fan speed to the fourth preset value (70).
         """
         self.adjust_fan_speed(70)
+
+    def get_states(self) -> Dict:
+        """
+        Retrieves the states of the bedroom light and fan.
+        Returns:
+            Dict: A dictionary containing the states of the bedroom light and fan.
+        """
+        return {
+            "light": self._get_entity_state(self.light_entity_id),
+            "fan": self._get_entity_state(self.fan_entity_id),
+            "fan_speed": self._get_entity_state(self.fan_speed_entity_id),
+        }

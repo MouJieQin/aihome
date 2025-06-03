@@ -71,3 +71,11 @@ class ElecMeterController(HomeAssistantDevice):
             Dict: The state of the controller switch.
         """
         return self._get_state(self.switch_status_entity_id)
+
+    def get_states(self) -> Dict:
+        """
+        Retrieves the states of the electricity meter controller switch.
+        Returns:
+            Dict: The states of the controller switch.
+        """
+        return self._get_entity_state(self.switch_status_entity_id)
