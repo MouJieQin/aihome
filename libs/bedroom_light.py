@@ -7,9 +7,10 @@ such as turning lights on/off, switching light modes, and adjusting fan speed.
 from homeassistant_api import Client
 from typing import Dict, Any
 from libs.log_config import logger
+from libs.home_assistant_base import HomeAssistantDevice
 
 
-class LightBedroom:
+class LightBedroom(HomeAssistantDevice):
     """
     A class for controlling bedroom lights and fans using the Home Assistant Python API.
 
@@ -44,106 +45,63 @@ class LightBedroom:
                     }
                 }
         """
-        ha_config = config["home_assistant"]
-        light_config = config["smart_home_appliances"]["light_bedroom"]
-        api_url = f"http://{ha_config['host']}:{ha_config['port']}/api"
-        self.client = Client(api_url, ha_config["long_lived_access_token"])
-        self.light_entity_id = light_config["entity_id"]["light"]
-        self.fan_entity_id = light_config["entity_id"]["fan"]
-        self.fan_speed_entity_id = light_config["entity_id"]["fan_speed"]
-
-    def _call_service(self, domain: str, service: str, data: Dict[str, Any]) -> None:
-        """
-        Calls a Home Assistant service.
-
-        Args:
-            domain (str): The domain of the service (e.g., 'light', 'fan').
-            service (str): The name of the service (e.g., 'turn_on', 'turn_off').
-            data (Dict[str, Any]): The data to pass to the service.
-        """
-        try:
-            res = self.client.trigger_service(domain, service, **data)
-            logger.info(res)
-        except Exception as e:
-            logger.exception(e)
+        super().__init__(config, "light_bedroom")
+        self.light_entity_id = self.entity_ids["light"]
+        self.fan_entity_id = self.entity_ids["fan"]
+        self.fan_speed_entity_id = self.entity_ids["fan_speed"]
 
     def turn_on_light(self) -> None:
         """
-        Turns on the bedroom light by calling the Home Assistant `light.turn_on` service.
+        Turns on the bedroom light.
         """
-        self._call_service("light", "turn_on", {"entity_id": self.light_entity_id})
+        self._turn_on(self.light_entity_id)
 
     def turn_off_light(self) -> None:
         """
-        Turns off the bedroom light by calling the Home Assistant `light.turn_off` service.
+        Turns off the bedroom light.
         """
-        self._call_service("light", "turn_off", {"entity_id": self.light_entity_id})
+        self._turn_off(self.light_entity_id)
 
     def switch_light(self, value: bool) -> None:
         """
         Switches the bedroom light on or off based on the provided boolean value.
+
         Args:
             value (bool): If True, turns on the light; if False, turns off the light.
         """
-        if value:
-            self.turn_on_light()
-        else:
-            self.turn_off_light()
+        self._switch(self.light_entity_id, value)
 
     def set_light_mode(self, mode: str) -> None:
         """
         Activates the light mode for the bedroom light.
+
+        Args:
+            mode (str): The light mode to activate.
         """
         self._call_service(
             "light", "turn_on", {"entity_id": self.light_entity_id, "effect": mode}
         )
 
-    def turn_on_light_mode_night(self) -> None:
+    def turn_on_fan(self) -> None:
         """
-        Activates the night light mode for the bedroom light.
+        Turns on the bedroom fan.
         """
-        self.set_light_mode("Night Light")
-
-    def turn_on_light_mode_movie(self) -> None:
-        """
-        Activates the movie mode for the bedroom light.
-        """
-        self.set_light_mode("Cinema Mode")
-
-    def turn_on_light_mode_entertainment(self) -> None:
-        """
-        Activates the entertainment mode for the bedroom light.
-        """
-        self.set_light_mode("Entertainment Mode")
-
-    def turn_on_light_mode_reception(self) -> None:
-        """
-        Activates the reception mode for the bedroom light.
-        """
-        self.set_light_mode("Reception Mode")
+        self._turn_on(self.fan_entity_id)
 
     def turn_off_fan(self) -> None:
         """
-        Turns off the bedroom fan by calling the Home Assistant `fan.turn_off` service.
+        Turns off the bedroom fan.
         """
-        self._call_service("fan", "turn_off", {"entity_id": self.fan_entity_id})
-
-    def turn_on_fan(self) -> None:
-        """
-        Turns on the bedroom fan by calling the Home Assistant `fan.turn_on` service.
-        """
-        self._call_service("fan", "turn_on", {"entity_id": self.fan_entity_id})
+        self._turn_off(self.fan_entity_id)
 
     def switch_fan(self, value: bool) -> None:
         """
         Switches the bedroom fan on or off based on the provided boolean value.
+
         Args:
             value (bool): If True, turns on the fan; if False, turns off the fan.
         """
-        if value:
-            self.turn_on_fan()
-        else:
-            self.turn_off_fan()
+        self._switch(self.fan_entity_id, value)
 
     def adjust_fan_speed(self, value: int) -> None:
         """
@@ -158,14 +116,18 @@ class LightBedroom:
             {"entity_id": self.fan_speed_entity_id, "value": value},
         )
 
-    def adjust_fan_speed_to_preset_value(self, value: int) -> None:
+    def adjust_fan_speed_to_preset_value(self, index: int) -> None:
         """
         Adjusts the speed of the bedroom fan to a preset value.
+
         Args:
-            value (int): The preset speed value for the fan.
+            index (int): The index of the preset speed value for the fan.
         """
         preset_values = [1, 22, 46, 70, 86, 100]
-        self.adjust_fan_speed(preset_values[value])
+        if 0 <= index < len(preset_values):
+            self.adjust_fan_speed(preset_values[index])
+        else:
+            logger.error(f"Index {index} out of range for preset values")
 
     def adjust_fan_speed_to_max(self) -> None:
         """
@@ -181,6 +143,6 @@ class LightBedroom:
 
     def adjust_fan_speed_to_fourth(self) -> None:
         """
-        Sets the bedroom fan speed to the fourth preset value (69).
+        Sets the bedroom fan speed to the fourth preset value (70).
         """
-        self.adjust_fan_speed(69)
+        self.adjust_fan_speed(70)

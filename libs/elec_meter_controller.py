@@ -4,12 +4,11 @@ using the Home Assistant Python API. It allows users to turn the controller on/o
 retrieve the state of the controller switch.
 """
 
-from homeassistant_api import Client
 from typing import Dict, Any
-from libs.log_config import logger
+from libs.home_assistant_base import HomeAssistantDevice
 
 
-class ElecMeterController:
+class ElecMeterController(HomeAssistantDevice):
     """
     A class for controlling an electricity meter using the Home Assistant Python API.
 
@@ -40,52 +39,21 @@ class ElecMeterController:
                     }
                 }
         """
-        # Extract Home Assistant configuration
-        ha_config = config["home_assistant"]
-        # Extract electricity meter controller configuration
-        controller_config = config["smart_home_appliances"]["elec_meter_controller"]
-        # Construct the API URL
-        api_url = f"http://{ha_config['host']}:{ha_config['port']}/api"
-        # Initialize the Home Assistant client
-        self.client = Client(api_url, ha_config["long_lived_access_token"])
+        HomeAssistantDevice.__init__(self, config, "elec_meter_controller")
         # Get the entity ID for the controller switch status
-        self.switch_status_entity_id = controller_config["entity_id"]["switch_status"]
-
-    def _call_service(self, domain: str, service: str, data: Dict[str, Any]) -> None:
-        """
-        Calls a Home Assistant service.
-
-        Args:
-            domain (str): The domain of the service (e.g., 'switch', 'light').
-            service (str): The name of the service (e.g., 'turn_on', 'turn_off').
-            data (Dict[str, Any]): The data to pass to the service.
-        """
-        try:
-            # Trigger the Home Assistant service
-            res = self.client.trigger_service(domain, service, **data)
-            # Log the service call response
-            logger.info(res)
-        except Exception as e:
-            # Log any exceptions that occur during the service call
-            logger.exception(e)
+        self.switch_status_entity_id = self.entity_ids["switch_status"]
 
     def turn_on_controller(self) -> None:
         """
         Turns on the electricity meter controller by calling the Home Assistant `switch.turn_on` service.
         """
-        # Bug fix: Change domain from 'light' to 'switch'
-        self._call_service(
-            "switch", "turn_on", {"entity_id": self.switch_status_entity_id}
-        )
+        self._turn_on(self.switch_status_entity_id)
 
     def turn_off_controller(self) -> None:
         """
         Turns off the electricity meter controller by calling the Home Assistant `switch.turn_off` service.
         """
-        # Bug fix: Change domain from 'light' to 'switch'
-        self._call_service(
-            "switch", "turn_off", {"entity_id": self.switch_status_entity_id}
-        )
+        self._turn_off(self.switch_status_entity_id)
 
     def switch_controller(self, value: bool) -> None:
         """
@@ -93,10 +61,7 @@ class ElecMeterController:
         Args:
             value (bool): If True, turns on the controller. If False, turns off the controller.
         """
-        if value:
-            self.turn_on_controller()
-        else:
-            self.turn_off_controller()
+        self._switch(self.switch_status_entity_id, value)
 
     def get_state_controller_switch(self) -> bool:
         """
@@ -105,5 +70,4 @@ class ElecMeterController:
         Returns:
             Dict: The state of the controller switch.
         """
-        state = self.client.get_state(entity_id=self.switch_status_entity_id)
-        return state.state == "on"
+        return self._get_state(self.switch_status_entity_id)

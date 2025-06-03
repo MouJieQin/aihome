@@ -5,16 +5,16 @@ from libs.log_config import logger
 
 class HomeAssistantDevice:
     """
-    Home Assistant设备基类，提供基本的服务调用和状态获取功能
+    Base class for Home Assistant devices, providing basic service call and state retrieval functions.
     """
 
     def __init__(self, config: Dict[str, Any], device_config_key: str):
         """
-        初始化Home Assistant设备基类
+        Initializes the Home Assistant device base class.
 
         Args:
-            config (Dict[str, Any]): 配置字典
-            device_config_key (str): 设备配置在smart_home_appliances中的键名
+            config (Dict[str, Any]): Configuration dictionary.
+            device_config_key (str): The key name of the device configuration in 'smart_home_appliances'.
         """
         ha_config = config["home_assistant"]
         device_config = config["smart_home_appliances"][device_config_key]
@@ -24,12 +24,12 @@ class HomeAssistantDevice:
 
     def _call_service(self, domain: str, service: str, data: Dict[str, Any]) -> None:
         """
-        调用Home Assistant服务
+        Calls a Home Assistant service.
 
         Args:
-            domain (str): 服务域
-            service (str): 服务名称
-            data (Dict[str, Any]): 服务数据
+            domain (str): The domain of the service (e.g., 'climate', 'switch').
+            service (str): The name of the service (e.g., 'turn_on', 'set_temperature').
+            data (Dict[str, Any]): The data to pass to the service.
         """
         try:
             res = self.client.trigger_service(domain, service, **data)
@@ -37,18 +37,52 @@ class HomeAssistantDevice:
         except Exception as e:
             logger.exception(e)
 
-    def get_entity_state(self, entity_id: str) -> Dict:
+    def _turn_on(self, entity_id: str) -> None:
+        """Turns on the device."""
+        self._call_service("switch", "turn_on", {"entity_id": entity_id})
+
+    def _turn_off(self, entity_id: str) -> None:
+        """Turns off the device."""
+        self._call_service("switch", "turn_off", {"entity_id": entity_id})
+
+    def _switch(self, entity_id: str, value: bool) -> None:
         """
-        获取实体状态
+        Switches the device state.
 
         Args:
-            entity_id (str): 实体ID
+            entity_id (str): The ID of the entity.
+            value (bool): True to turn on, False to turn off.
+        """
+        if value:
+            self._turn_on(entity_id)
+        else:
+            self._turn_off(entity_id)
+
+    def _toggle(self, entity_id: str) -> None:
+        """Toggles the device state."""
+        self._call_service("switch", "toggle", {"entity_id": entity_id})
+
+    def _get_state(self, entity_id: str) -> bool:
+        """Retrieves the device state.
 
         Returns:
-            Dict: 实体状态
+            bool: True if the device is on, False otherwise.
+        """
+        state = self._get_entity_state(entity_id)
+        return state.get("state") == "on"
+
+    def _get_entity_state(self, entity_id: str) -> Dict:
+        """
+        Retrieves the entity state.
+
+        Args:
+            entity_id (str): The ID of the entity.
+
+        Returns:
+            Dict: The entity state.
         """
         try:
-            state = self.client.get_state(entity_id)
+            state = self.client.get_state(entity_id)  # type: ignore
             return state
         except Exception as e:
             logger.exception(e)

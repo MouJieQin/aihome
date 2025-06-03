@@ -454,26 +454,6 @@ class AI_Server:
                 "model_file": "./voices/models/fan-speed-one.table",
                 "callback_recognized": self.light_bedroom.adjust_fan_speed_to_min,
             },
-            "light_mode_movie": {
-                "keyword": "影院模式",
-                "model_file": "./voices/models/light-mode-movie.table",
-                "callback_recognized": self.light_bedroom.turn_on_light_mode_movie,
-            },
-            "light_mode_entertainment": {
-                "keyword": "娱乐模式",
-                "model_file": "./voices/models/light-mode-entertainment.table",
-                "callback_recognized": self.light_bedroom.turn_on_light_mode_entertainment,
-            },
-            "light_mode_reception": {
-                "keyword": "会客模式",
-                "model_file": "./voices/models/light-mode-reception.table",
-                "callback_recognized": self.light_bedroom.turn_on_light_mode_reception,
-            },
-            "light_mode_night": {
-                "keyword": "夜灯模式",
-                "model_file": "./voices/models/light-mode-night.table",
-                "callback_recognized": self.light_bedroom.turn_on_light_mode_night,
-            },
             "turn_on_cliamte": {
                 "keyword": "开启空调",
                 "model_file": "./voices/models/turn-on-climate.table",
