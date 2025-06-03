@@ -120,32 +120,17 @@ class AI_Server:
 
     def _recognized_callback(self, cur_recognized_text: str):
         """Callback function for recognized keywords."""
-        prefix = "开启"
-        if cur_recognized_text.startswith(prefix):
-            try:
-                l = len(prefix)
-                speed = cur_recognized_text[l : l + 4].strip()
-                speed_presets = [
-                    "一级风速",
-                    "二级风速",
-                    "三级风速",
-                    "四级风速",
-                    "五级风速",
-                    "六级风速",
-                ]
-                if speed in speed_presets:
-                    speed = speed_presets.index(speed) + 1
-                    self.light_bedroom.adjust_fan_speed_to_preset_value(speed)
-                    self._reset_response_time_counter()
-                else:
-                    logger.error("Invalid speed preset")
-            except ValueError:
-                logger.error("Invalid speed value")
-        # self.activate_response_keyword_recognizers()
+        self.recognizer.stop_recognizer()
+        if len(cur_recognized_text) > 1:
+            self.chat_with_ai_assistant(cur_recognized_text)
 
     def chat_with_ai_assistant(self, user_input: str) -> Optional[str]:
         """Chat with AI assistant and return the response."""
+        logger.info(f"User input: {user_input}")
+        self.speaker.play_send_message()
         response = self.ai_assistant.chat(user_input)
+        logger.info(f"Assistant response: {response}")
+        self.speaker.play_receive_response()
         if response:
             self._handle_ai_assistant_response(response)
         return response
@@ -514,9 +499,9 @@ class AI_Server:
 
     def activate_all_keyword_recognizers(self):
         """Activate all keyword recognizers except keep-alive ones."""
-        for key, items in self.keyword_recognizers.items():
-            if key not in self.keyword_keep_alive_list:
-                items["recognizer"].recognize_once_async(items["model"])
+        # for key, items in self.keyword_recognizers.items():
+        #     if key not in self.keyword_keep_alive_list:
+        #         items["recognizer"].recognize_once_async(items["model"])
         self._reset_response_time_counter()
         self.speaker.play_start_record()
         self.recognizer.start_recognizer()
@@ -745,9 +730,7 @@ class AI_Server:
 AI = AI_Server(configure_path="./configure.json")
 
 if __name__ == "__main__":
-    AI.chat_with_ai_assistant(
-        "三级风俗。空调温度设置为26度。健康模式开启。灯光模式调为。夜灯模式。"
-    )
-    # j = AI.create_supported_function_for_ai_assistant()
-    # print(json.dumps(j, ensure_ascii=False))
-    # asyncio.run(AI.main())
+    # AI.chat_with_ai_assistant(
+    #     "三级风俗。空调温度设置为26度。健康模式开启。灯光模式调为。夜灯模式。"
+    # )
+    asyncio.run(AI.main())
