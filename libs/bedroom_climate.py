@@ -260,14 +260,6 @@ class ClimateBedroom(HomeAssistantDevice):
         """
         self._switch(self.entity_id_quiet_mode, value)
 
-    def get_climate_state(self) -> Dict:
-        """
-        Retrieves the state of the bedroom climate device.
-        Returns:
-            Dict: The state of the bedroom climate device.
-        """
-        return self._get_entity_state(self.climate_entity_id)
-
     def get_fresh_air_mode_state(self) -> bool:
         """
         Retrieves the state of the fresh air mode switch.
@@ -292,6 +284,35 @@ class ClimateBedroom(HomeAssistantDevice):
         """
         return self._get_state(self.entity_id_quiet_mode)
 
+    def get_panel_light_state(self) -> bool:
+        """
+        Retrieves the state of the panel light switch.
+        Returns:
+            bool: True if the panel light is on, False otherwise.
+        """
+        return self._get_state(self.entity_id_panel_light)
+
+    def get_climate_state(self) -> Dict:
+        """
+        Retrieves the state of the bedroom climate device.
+        Returns:
+            Dict: The state of the bedroom climate device.
+        """
+        state_details = self._get_entity_state(self.climate_entity_id)
+        return {
+            "state": state_details.get("state"),
+            "attributes": {
+                "current_temperature": state_details.get("attributes", {}).get(
+                    "current_temperature"
+                ),
+                "temperature": state_details.get("attributes", {}).get("temperature"),
+                "preset_mode": state_details.get("attributes", {}).get("preset_mode"),
+                "fan_mode": state_details.get("attributes", {}).get("fan_mode"),
+                "swing_mode": state_details.get("attributes", {}).get("swing_mode"),
+                "hvac_mode": state_details.get("attributes", {}).get("hvac_mode"),
+            },
+        }
+
     def get_states(self) -> Dict:
         """
         Retrieves the states of the bedroom climate device and its switches.
@@ -299,9 +320,9 @@ class ClimateBedroom(HomeAssistantDevice):
             Dict: The states of the bedroom climate device and its switches.
         """
         return {
-            "climate": self._get_entity_state(self.climate_entity_id),
-            "fresh_air_mode": self._get_entity_state(self.entity_id_fresh_air_mode),
-            "health_mode": self._get_entity_state(self.entity_id_health_mode),
-            "quiet_mode": self._get_entity_state(self.entity_id_quiet_mode),
-            "panel_light": self._get_entity_state(self.entity_id_panel_light),
+            "climate": self.get_climate_state(),
+            "fresh_air_mode": self.get_fresh_air_mode_state(),
+            "health_mode": self.get_health_mode_state(),
+            "quiet_mode": self.get_quiet_mode_state(),
+            "panel_light": self.get_panel_light_state(),
         }

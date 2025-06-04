@@ -147,6 +147,52 @@ class LightBedroom(HomeAssistantDevice):
         """
         self.adjust_fan_speed(70)
 
+    def get_light_state(self) -> Dict:
+        """
+        Retrieves the state of the bedroom light.
+        Returns:
+            Dict: The state of the bedroom light.
+        """
+        state_details = self._get_entity_state(self.light_entity_id)
+        return {
+            "state": state_details.get("state"),
+            "brightness": state_details.get("attributes", {}).get("brightness"),
+            "color_temp_kelvin": state_details.get("attributes", {}).get(
+                "color_temp_kelvin"
+            ),
+            "effect": state_details.get("attributes", {}).get("effect"),
+            "rgb_color": state_details.get("attributes", {}).get("rgb_color"),
+            # "min_color_temp_kelvin": state_details.get("attributes", {}).get(
+            #     "min_color_temp_kelvin"
+            # ),
+            # "max_color_temp_kelvin": state_details.get("attributes", {}).get(
+            #     "max_color_temp_kelvin"
+            # ),
+            # "effect_list": state_details.get("attributes", {}).get("effect_list"),
+        }
+
+    def get_fan_state(self) -> Dict:
+        """
+        Retrieves the state of the bedroom fan.
+        Returns:
+            Dict: The state of the bedroom fan.
+        """
+        state_details = self._get_entity_state(self.fan_entity_id)
+        return {
+            "state": state_details.get("state"),
+        }
+
+    def get_fan_speed_state(self) -> Dict:
+        """
+        Retrieves the state of the bedroom fan speed.
+        Returns:
+            Dict: The state of the bedroom fan speed.
+        """
+        state_details = self._get_entity_state(self.fan_speed_entity_id)
+        return {
+            "state": state_details.get("state"),
+        }
+
     def get_states(self) -> Dict:
         """
         Retrieves the states of the bedroom light and fan.
@@ -154,7 +200,7 @@ class LightBedroom(HomeAssistantDevice):
             Dict: A dictionary containing the states of the bedroom light and fan.
         """
         return {
-            "light": self._get_entity_state(self.light_entity_id),
-            "fan": self._get_entity_state(self.fan_entity_id),
-            "fan_speed": self._get_entity_state(self.fan_speed_entity_id),
+            "light": self.get_light_state(),
+            "fan": self.get_fan_state(),
+            "fan_speed": self.get_fan_speed_state(),
         }

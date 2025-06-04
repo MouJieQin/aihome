@@ -188,6 +188,7 @@ class AI_Server:
                     "args": {
                         "value": {
                             "type": "int",
+                            "description": "[1, 22, 46, 70, 86, 100]分别对应一到六级风速百分比",
                             "is_necessary": True,
                             "range": "[0,5]",
                             "condidates": {

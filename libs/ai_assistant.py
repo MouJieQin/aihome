@@ -20,6 +20,7 @@ class AIassistant:
         功能列表如下："""
             + supported_commands
             + """
+        你需要根据我的输入，推断出我要控制的智能家居功能，并给出相应的参数（args），args中的参数值应参考condidates和range。
         案例：
         用户说：空调风速设置为中低速，目标温度为25度，空调健康模式开启，空调扫风设置为上下左右扫风。
         你的回答：
@@ -60,10 +61,25 @@ class AIassistant:
         """
         logger.info(f"AI assistant input: {content}")
         self.messages.append({"role": "user", "content": content})
+        return self.messages
+
+    def _manage_history(self, user_input: str, response: Optional[str]):
+        if not response:
+            return
+        content = f"""
+        用户的输入：{user_input}
+        上轮对话中的智能家居设备的状态信息已省略。
+        """
+        self.messages.pop(-1)
+        self.messages.append({"role": "user", "content": content})
+        self.messages.append({"role": "assistant", "content": response})
         if len(self.messages) > 20:
             self.messages.pop(1)
             self.messages.pop(1)
-        return self.messages
+        import json
+
+        with open("ai_history.json", "w") as f:
+            json.dump(self.messages, f, ensure_ascii=False, indent=4)
 
     def chat(self, user_input: str, devices_states: str = "") -> Optional[str]:
         try:
@@ -71,9 +87,8 @@ class AIassistant:
             response = self.client.chat.completions.create(
                 model=self.volcengine["model"], messages=messages, stream=False
             )
-            content = response.choices[0].message.content
-            if content:
-                self.messages.append({"role": "assistant", "content": content})
+            content = response.choices[0].message.content  # type: ignore
+            self._manage_history(user_input, content)
             return content
         except Exception as e:
             logger.exception(e)

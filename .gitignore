@@ -8,3 +8,4 @@ configure.json
 tmp/
 aihome.code-workspace
 config
+ai_history.json

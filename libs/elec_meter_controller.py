@@ -78,4 +78,4 @@ class ElecMeterController(HomeAssistantDevice):
         Returns:
             Dict: The states of the controller switch.
         """
-        return self._get_entity_state(self.switch_status_entity_id)
+        return {"switch_status": self._get_state(self.switch_status_entity_id)}
