@@ -4,9 +4,7 @@ using the Home Assistant Python API. It allows users to perform various operatio
 such as turning the climate device on/off, switching modes, and setting temperature.
 """
 
-from homeassistant_api import Client
 from typing import Dict, Any
-from libs.log_config import logger
 from libs.home_assistant_base import HomeAssistantDevice
 
 

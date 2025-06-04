@@ -11,6 +11,7 @@ from typing import Dict, Callable, Optional
 from libs.bedroom_light import LightBedroom
 from libs.bedroom_climate import ClimateBedroom
 from libs.elec_meter_controller import ElecMeterController
+from libs.homeassistant_sensors import HomeAssistantSensors
 from libs.websocket_client import Websocket_client_esp32
 from libs.speaker import Speaker
 from libs.recognizer import Recognizer
@@ -116,6 +117,7 @@ class AI_Server:
         self.light_bedroom = LightBedroom(self.configure)
         self.climate_bedroom = ClimateBedroom(self.configure)
         self.elec_controller = ElecMeterController(self.configure)
+        self.sensors = HomeAssistantSensors(self.configure)
         self.esp32_config = self.configure["esp32"]
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
@@ -451,6 +453,7 @@ class AI_Server:
             "light_bedroom": self.light_bedroom.get_states(),
             "climate_bedroom": self.climate_bedroom.get_states(),
             "elec_controller": self.elec_controller.get_states(),
+            "sensors": self.sensors.get_states(),
         }
 
     def _create_keyword_recognizers(self) -> Dict:
@@ -797,6 +800,5 @@ class AI_Server:
 AI = AI_Server(configure_path="./configure.json")
 
 if __name__ == "__main__":
-    # print(AI.get_states_of_all_devices())
-    # print(json.dumps(AI.get_states_of_all_devices(), cls=DateTimeEncoder))
+    print(AI.get_states_of_all_devices())
     asyncio.run(AI.main())

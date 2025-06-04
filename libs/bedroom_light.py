@@ -4,7 +4,6 @@ using the Home Assistant Python API. It allows users to perform various operatio
 such as turning lights on/off, switching light modes, and adjusting fan speed.
 """
 
-from homeassistant_api import Client
 from typing import Dict, Any
 from libs.log_config import logger
 from libs.home_assistant_base import HomeAssistantDevice
