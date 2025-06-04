@@ -1,6 +1,7 @@
 from volcenginesdkarkruntime import Ark
 from libs.log_config import logger
 from typing import Dict, Any, Optional
+import datetime
 
 
 class AIassistant:
@@ -57,6 +58,7 @@ class AIassistant:
             devices_states = "暂无"
         content = f"""
         用户的输入：{user_input}
+        当前时间：{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         以下是智能家居设备的状态信息：{devices_states}
         """
         logger.info(f"AI assistant input: {content}")
@@ -68,6 +70,7 @@ class AIassistant:
             return
         content = f"""
         用户的输入：{user_input}
+        当前时间：{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         上轮对话中的智能家居设备的状态信息已省略。
         """
         self.messages.pop(-1)

@@ -4,8 +4,12 @@
 #include <ESPAsyncWebServer.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <esp_task_wdt.h>
 #include <utility>
 #include "WZ.h"
+#define WDT_TIMEOUT 5
+// 调试开关
+#define DEBUG_MODE true
 
 // ESP32-S NodeMCU Board serial port information
 /*
@@ -211,11 +215,11 @@ class Websocket_manager
 {
 public:
   // Get singleton instance
-  static Websocket_manager *getInstance(const String &ssid, const String &password,
-                                        const String &url,
+  static Websocket_manager *getInstance(const char *ssid, const char *password,
+                                        const char *url,
                                         const uint16_t port,
-                                        const String &mqtt_server, const uint16_t mqtt_port,
-                                        const String &mqtt_user, const String &mqtt_password,
+                                        const char *mqtt_server, const uint16_t mqtt_port,
+                                        const char *mqtt_user, const char *mqtt_password,
                                         const uint8_t pin_DHT22)
   {
     static Websocket_manager instance_(ssid, password, url, port, mqtt_server, mqtt_port,
@@ -265,12 +269,51 @@ public:
     }
   }
 
+  // 检查WiFi连接状态
+  bool isWiFiConnected()
+  {
+    return WiFi.status() == WL_CONNECTED;
+  }
+
+  // 重新连接WiFi
+  bool reconnectWiFi()
+  {
+    if (isWiFiConnected())
+      return true;
+
+    Serial.println("WiFi disconnected, attempting to reconnect...");
+    WiFi.disconnect();
+    delay(1000);
+    WiFi.begin(this->ssid, this->password);
+
+    unsigned long startAttemptTime = millis();
+    // 等待WiFi连接，超时时间30秒
+    while (WiFi.status() != WL_CONNECTED && (millis() - startAttemptTime) < 30000)
+    {
+      delay(500);
+      Serial.print(".");
+    }
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      Serial.println("\nWiFi reconnected successfully");
+      Serial.print("Got IP: ");
+      Serial.println(WiFi.localIP());
+      return true;
+    }
+    else
+    {
+      Serial.println("\nWiFi reconnect failed");
+      return false;
+    }
+  }
+
 private:
   // Private constructor
-  explicit Websocket_manager(const String &ssid, const String &password,
-                             const String &url, const uint16_t port,
-                             const String &mqtt_server, const uint16_t mqtt_port,
-                             const String &mqtt_user, const String &mqtt_password,
+  explicit Websocket_manager(const char *ssid, const char *password,
+                             const char *url, const uint16_t port,
+                             const char *mqtt_server, const uint16_t mqtt_port,
+                             const char *mqtt_user, const char *mqtt_password,
                              const uint8_t pin_DHT22)
       : ssid(ssid), password(password), url(url), port(port),
         server(port), ws(url),
@@ -280,7 +323,7 @@ private:
         dht22(Sensor_DHT22::getInstance(pin_DHT22)),
         ze08(Sensor_ZE08_CH2O::getInstance(true))
   {
-    client.setServer(mqtt_server.c_str(), mqtt_port);
+    client.setServer(mqtt_server, mqtt_port);
     setup();
   }
 
@@ -298,6 +341,13 @@ private:
   // Implement MQTT data push
   void mqtt_push_imple()
   {
+    // 先检查WiFi连接
+    if (!reconnectWiFi())
+    {
+      Serial.println("Cannot push data to MQTT, WiFi not connected");
+      return;
+    }
+
     if (!client.connected())
     {
       if (!connect_mqtt())
@@ -313,14 +363,18 @@ private:
     { // Publish only when data is valid
       char tem_str[8];
       dtostrf(tem_hum.first, 1, 2, tem_str);
+#ifdef DEBUG_MODE
       Serial.printf("Temperature: %s°C\n", tem_str);
+#endif
       client.publish("homeassistant/sensor/dht22/temperature", tem_str);
     }
     if (!isnan(tem_hum.second))
     {
       char hum_str[8];
       dtostrf(tem_hum.second, 1, 2, hum_str);
+#ifdef DEBUG_MODE
       Serial.printf("Humidity: %s%%\n", hum_str);
+#endif
       client.publish("homeassistant/sensor/dht22/humidity", hum_str);
     }
     const std::pair<bool, const std::pair<uint16_t, float>> ch2o = ze08->read();
@@ -328,13 +382,19 @@ private:
     {
       char ch2o_str[10];
       dtostrf(ch2o.second.second, 1, 5, ch2o_str); // Keep 5 decimal places
+#ifdef DEBUG_MODE
       Serial.printf("CH2O: %s mg/m³\n", ch2o_str);
+#endif
       client.publish("homeassistant/sensor/ze08_ch2o/state", ch2o_str);
     }
   }
 
   void publish_mqtt_discovery()
   {
+#ifdef DEBUG_MODE
+    Serial.println("Publishing MQTT discovery messages");
+#endif
+
     client.publish("homeassistant/sensor/dht22_temperature/config",
                    "{\"name\":\"DHT22 Temperature\",\"unique_id\":\"dht22_temp_001\",\"state_topic\":\"homeassistant/sensor/dht22/temperature\",\"unit_of_measurement\":\"°C\",\"device_class\":\"temperature\",\"state_class\":\"measurement\"}", true);
     client.publish("homeassistant/sensor/dht22_humidity/config",
@@ -348,12 +408,34 @@ private:
   {
     if (client.connected())
     {
+#ifdef DEBUG_MODE
+      Serial.println("MQTT client already connected");
+#endif
       return true;
     }
-    Serial.println("Attempting to connect to MQTT server...");
-    if (client.connect("ESP32Client", mqtt_user.c_str(), mqtt_password.c_str()))
+
+    // 确保WiFi已连接
+    if (!isWiFiConnected())
     {
+      Serial.println("Cannot connect to MQTT, WiFi not connected");
+      return false;
+    }
+
+#ifdef DEBUG_MODE
+    Serial.print("Attempting to connect to MQTT server: ");
+    Serial.println(mqtt_server);
+    Serial.print("MQTT Port: ");
+    Serial.println(mqtt_port);
+    Serial.print("MQTT User: ");
+    Serial.println(mqtt_user);
+#endif
+
+    // 尝试连接MQTT服务器
+    if (client.connect("ESP32Client", mqtt_user, mqtt_password))
+    {
+#ifdef DEBUG_MODE
       Serial.println("MQTT connection successful");
+#endif
       publish_mqtt_discovery();
       return true;
     }
@@ -361,6 +443,46 @@ private:
     {
       Serial.print("MQTT connection failed, error code= ");
       Serial.println(client.state());
+
+      // 根据错误代码提供更详细的信息
+      int state = client.state();
+      switch (state)
+      {
+      case -4:
+        Serial.println("MQTT_CONNECTION_TIMEOUT - the server didn't respond within the keepalive time");
+        break;
+      case -3:
+        Serial.println("MQTT_CONNECTION_LOST - the network connection was broken");
+        break;
+      case -2:
+        Serial.println("MQTT_CONNECT_FAILED - the network connection failed");
+        break;
+      case -1:
+        Serial.println("MQTT_DISCONNECTED - the client is disconnected cleanly");
+        break;
+      case 0:
+        Serial.println("MQTT_CONNECTED - the client is connected");
+        break;
+      case 1:
+        Serial.println("MQTT_CONNECT_BAD_PROTOCOL - the server doesn't support the requested version of MQTT");
+        break;
+      case 2:
+        Serial.println("MQTT_CONNECT_BAD_CLIENT_ID - the server rejected the client identifier");
+        break;
+      case 3:
+        Serial.println("MQTT_CONNECT_UNAVAILABLE - the server was unavailable");
+        break;
+      case 4:
+        Serial.println("MQTT_CONNECT_BAD_CREDENTIALS - the username/password were rejected");
+        break;
+      case 5:
+        Serial.println("MQTT_CONNECT_UNAUTHORIZED - the client was not authorized to connect");
+        break;
+      default:
+        Serial.println("Unknown MQTT error code");
+        break;
+      }
+
       return false;
     }
   }
@@ -374,21 +496,27 @@ private:
       Serial.begin(115200);
     }
 
+#ifdef DEBUG_MODE
     Serial.print("Connecting to ");
     Serial.println(ssid);
+#endif
 
     WiFi.begin(ssid, password);
 
     while (WiFi.status() != WL_CONNECTED)
     {
       delay(500);
+#ifdef DEBUG_MODE
       Serial.print(".");
+#endif
     }
 
+#ifdef DEBUG_MODE
     Serial.println("");
     Serial.println("Connected..!");
     Serial.print("Got IP: ");
     Serial.println(WiFi.localIP());
+#endif
 
     ws.onEvent(event_handler_static);
     server.addHandler(&ws);
@@ -407,7 +535,9 @@ private:
     // Check if client is ready to send data
     if (!client->canSend())
     {
+#ifdef DEBUG_MODE
       Serial.printf("Client #%u is not ready to send data\n", client->id());
+#endif
       return;
     }
 
@@ -429,8 +559,10 @@ private:
 
       if (error)
       {
+#ifdef DEBUG_MODE
         Serial.print("JSON parsing failed: ");
         Serial.println(error.c_str());
+#endif
         return;
       }
 
@@ -488,11 +620,15 @@ private:
     switch (type)
     {
     case WS_EVT_CONNECT:
+#ifdef DEBUG_MODE
       Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+#endif
       break;
 
     case WS_EVT_DISCONNECT:
+#ifdef DEBUG_MODE
       Serial.printf("WebSocket client #%u disconnected\n", client->id());
+#endif
       // Cleanup operations can be added here after client disconnection
       break;
 
@@ -501,11 +637,15 @@ private:
       break;
 
     case WS_EVT_PONG:
+#ifdef DEBUG_MODE
       Serial.printf("WebSocket client #%u pong received\n", client->id());
+#endif
       break;
 
     case WS_EVT_ERROR:
+#ifdef DEBUG_MODE
       Serial.printf("WebSocket client #%u error: %s\n", client->id(), (char *)data);
+#endif
       // Actively disconnect the client when an error occurs
       if (client->canSend())
       {
@@ -515,14 +655,14 @@ private:
     }
   }
 
-  String ssid;
-  String password;
-  String url;
+  const char *ssid;
+  const char *password;
+  const char *url;
   uint16_t port;
-  String mqtt_server;
+  const char *mqtt_server;
   uint16_t mqtt_port;
-  String mqtt_user;
-  String mqtt_password;
+  const char *mqtt_user;
+  const char *mqtt_password;
   WiFiClient espClient;
   PubSubClient client;
   AsyncWebServer server;
@@ -543,6 +683,10 @@ const uint8_t led_pin = 2;
 
 void setup()
 {
+  // 初始化看门狗
+  esp_task_wdt_init(WDT_TIMEOUT, true); // 启用中断并在超时后重置系统
+  esp_task_wdt_add(NULL);               // 将当前任务添加到看门狗监控
+
   pinMode(led_pin, OUTPUT);
   pinMode(Sensor_HC_SR501_pin, INPUT);
   digitalWrite(led_pin, LOW);
@@ -553,6 +697,11 @@ void setup()
   const uint16_t mqtt_port = 1883;
   const char *mqtt_user = "mosquitto";
   const char *mqtt_password = "mosquitto_mqtt";
+
+#ifdef DEBUG_MODE
+  Serial.begin(115200);
+  Serial.println("Starting ESP32 Sensor Node...");
+#endif
 
   // Create singleton instance
   websocket_manager = Websocket_manager::getInstance(ssid, password, "/ws", 80,
@@ -573,9 +722,25 @@ void end()
 
 void loop()
 {
+  // 喂狗，重置看门狗计时器
+  esp_task_wdt_reset();
+
   // Regularly clean up disconnected clients
   websocket_manager->cleanupClients();
   websocket_manager->mqtt_push();
+
+  // 检查WiFi连接状态
+  if (!websocket_manager->isWiFiConnected())
+  {
+    Serial.println("WiFi disconnected in loop, attempting to reconnect...");
+    // 尝试重新连接WiFi
+    if (!websocket_manager->reconnectWiFi())
+    {
+      // 如果重新连接失败，添加一些延迟避免CPU占用过高
+      delay(5000);
+    }
+  }
+
   // Add some non-blocking delay to allow the system time to handle other tasks
   delay(10);
 }
