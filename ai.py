@@ -88,7 +88,10 @@ class AI_Server:
         """Start the thread for wake word detection."""
 
         def run_ai_awake():
+            """Run the wake word detection loop."""
             while True:
+                if self.porcupine is None:
+                    return
                 pcm = self.audio_stream.read(
                     self.porcupine.frame_length, exception_on_overflow=False
                 )
@@ -96,7 +99,7 @@ class AI_Server:
                 result = self.porcupine.process(pcm)
                 if result >= 0:
                     logger.info(f"检测到唤醒词: あすな")
-                    self.activate_all_keyword_recognizers()
+                    self.activate_keyword_recognizers()
 
         thread = threading.Thread(target=run_ai_awake)
         thread.daemon = True
@@ -497,6 +500,17 @@ class AI_Server:
             },
         }
 
+    def _enter_silent_mode(self):
+        logger.info("Enter silent mode.")
+        self._close_porcupine()
+        self.recognizer.stop_recognizer_sync()
+        self.stop_keyword_recognizers()
+
+    def _exit_silent_mode(self):
+        logger.info("Exit silent mode.")
+        self._init_porcupine()
+        self.activate_keyword_recognizers()
+
     def _call_callback(self, callback: Optional[Callable]):
         """Call the callback function if it's not None."""
         if callback:
@@ -517,7 +531,7 @@ class AI_Server:
             items["canceled_keyword_cb"] = self._canceled_keyword_cb(items["keyword"])
             items["recognizer"].canceled.connect(items["canceled_keyword_cb"])
 
-    def activate_all_keyword_recognizers(self):
+    def activate_keyword_recognizers(self):
         """Activate all keyword recognizers except keep-alive ones."""
         for key, items in self.keyword_recognizers.items():
             if key not in self.independent_keyword_list:

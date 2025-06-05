@@ -35,6 +35,7 @@ class Speaker:
         audio_output_config = speechsdk.audio.AudioOutputConfig(
             use_default_speaker=True
         )
+        # audio_output_config.
         speech_config.speech_synthesis_voice_name = voice_name
         self.speech_synthesizer = speechsdk.SpeechSynthesizer(
             speech_config=speech_config, audio_config=audio_output_config
