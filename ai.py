@@ -126,7 +126,7 @@ class AI_Server:
 
     def _init_keyword_recognizers(self):
         """Initialize keyword recognizers."""
-        self.keyword_keep_alive_list = ["response_no", "response_yes"]
+        self.independent_keyword_list = ["response_no", "response_yes"]
         self.keyword_recognizers = self._create_keyword_recognizers()
         self._setup_keyword_recognizers()
 
@@ -134,6 +134,7 @@ class AI_Server:
         """Callback function for recognized keywords."""
         self.recognizer.stop_recognizer()
         if len(cur_recognized_text) > 1:
+            self.stop_keyword_recognizers()
             self._chat_with_ai_assistant(cur_recognized_text)
 
     def _chat_with_ai_assistant(self, user_input: str) -> Optional[str]:
@@ -461,74 +462,24 @@ class AI_Server:
         return {
             "turn_on_light": {
                 "keyword": "开灯",
-                "model_file": "./voices/models/19f55a72-5f72-4334-8e0b-1ae922002559.table",
+                "model_file": "./voices/models/turn-on-light.table",
                 "model": None,
                 "recognizer": None,
                 "recognized_keyword_cb": None,
                 "canceled_keyword_cb": None,
-                "callback_recognized": self.light_bedroom.turn_on_light,
+                "callback_recognized": lambda: self.light_bedroom.set_light_mode(
+                    "Reception Mode"
+                ),
             },
             "turn_off_light": {
                 "keyword": "关灯",
-                "model_file": "./voices/models/5b1c6dc0-7987-4954-896e-9630b6cbcca9.table",
+                "model_file": "./voices/models/turn-off-light.table",
                 "callback_recognized": self.light_bedroom.turn_off_light,
             },
             "turn_off_fan": {
                 "keyword": "关闭风扇",
                 "model_file": "./voices/models/turn-off-fan.table",
                 "callback_recognized": self.light_bedroom.turn_off_fan,
-            },
-            "fan_speed_max": {
-                "keyword": "最大风速",
-                "model_file": "./voices/models/8c3db10e-d572-419a-afc7-b47cd0cb6c86.table",
-                "callback_recognized": self.light_bedroom.adjust_fan_speed_to_max,
-            },
-            "fan_speed_fourth": {
-                "keyword": "四级风速",
-                "model_file": "./voices/models/fan-speed-fourth.table",
-                "callback_recognized": self.light_bedroom.adjust_fan_speed_to_fourth,
-            },
-            "fan_speed_one": {
-                "keyword": "一级风速",
-                "model_file": "./voices/models/fan-speed-one.table",
-                "callback_recognized": self.light_bedroom.adjust_fan_speed_to_min,
-            },
-            "turn_on_cliamte": {
-                "keyword": "开启空调",
-                "model_file": "./voices/models/turn-on-climate.table",
-                "callback_recognized": lambda: self.auto_cool_mode(
-                    temperature=25, total_sample=18
-                ),
-            },
-            "turn_off_cliamte": {
-                "keyword": "关闭空调",
-                "model_file": "./voices/models/turn-off-climate.table",
-                "callback_recognized": self.climate_bedroom.turn_off_climate,
-            },
-            "toggle_fresh_air_mode": {
-                "keyword": "新风模式",
-                "model_file": "./voices/models/fresh-air-climate.table",
-                "callback_recognized": self.climate_bedroom.toggle_fresh_air_mode,
-            },
-            "toggle_health_mode": {
-                "keyword": "健康模式",
-                "model_file": "./voices/models/health-mode-climate.table",
-                "callback_recognized": self.climate_bedroom.toggle_health_mode,
-            },
-            "toggle_quiet_mode": {
-                "keyword": "静音模式",
-                "model_file": "./voices/models/quiet-mode-climate.table",
-                "callback_recognized": self.climate_bedroom.toggle_quiet_mode,
-            },
-            "turn_on_elec_controller": {
-                "keyword": "开启蚊香",
-                "model_file": "./voices/models/turn-on-mosquito-repellent-incense.table",
-                "callback_recognized": self.turn_on_controller,
-            },
-            "turn_off_elec_controller": {
-                "keyword": "关闭蚊香",
-                "model_file": "./voices/models/turn-off-mosquito-repellent-incense.table",
-                "callback_recognized": self.turn_off_controller,
             },
             "response_no": {
                 "keyword": "不用了",
@@ -568,9 +519,9 @@ class AI_Server:
 
     def activate_all_keyword_recognizers(self):
         """Activate all keyword recognizers except keep-alive ones."""
-        # for key, items in self.keyword_recognizers.items():
-        #     if key not in self.keyword_keep_alive_list:
-        #         items["recognizer"].recognize_once_async(items["model"])
+        for key, items in self.keyword_recognizers.items():
+            if key not in self.independent_keyword_list:
+                items["recognizer"].recognize_once_async(items["model"])
         self._reset_response_time_counter()
         self.recognizer.stop_recognizer_sync()
         self.speaker.play_start_record()
@@ -578,18 +529,19 @@ class AI_Server:
 
     def activate_response_keyword_recognizers(self):
         """Activate response-related keyword recognizers."""
-        for key in self.keyword_keep_alive_list:
+        for key in self.independent_keyword_list:
             item = self.keyword_recognizers[key]
             item["recognizer"].recognize_once_async(item["model"])
         self._reset_response_time_counter()
         self.speaker.play_start_record()
 
-    def stop_all_keyword_recognizers(self):
-        """Stop all keyword recognizers."""
+    def stop_keyword_recognizers(self):
+        """Stop keyword recognizers."""
         for key, items in self.keyword_recognizers.items():
-            items["recognizer"].stop_recognition_async().get()
+            if key not in self.independent_keyword_list:
+                items["recognizer"].stop_recognition_async().get()
 
-    async def stop_keyword_recognizers(self):
+    async def response_timer_demon(self):
         """Stop non-keep-alive keyword recognizers after timeout."""
         while True:
             if self._response_time_counter > 0:
@@ -600,9 +552,7 @@ class AI_Server:
                         self._response_time_counter,
                     )
                     await asyncio.sleep(self.RESPONSE_INTERVAL)
-                for key, items in self.keyword_recognizers.items():
-                    if key not in self.keyword_keep_alive_list:
-                        items["recognizer"].stop_recognition_async().get()
+                self.stop_keyword_recognizers()
                 self.recognizer.stop_recognizer()
                 self.speaker.play_end_record()
             await asyncio.sleep(self.RESPONSE_INTERVAL)
@@ -617,16 +567,6 @@ class AI_Server:
 
     def _reset_response_time_counter(self):
         self._response_time_counter = self.RESPONSE_TIMEOUT
-
-    def turn_on_controller(self):
-        """Turn on the electric controller and speak a message."""
-        self.elec_controller.turn_on_controller()
-        self.speaker.speak_text("蚊香已开启。")
-
-    def turn_off_controller(self):
-        """Turn off the electric controller and speak a message."""
-        self.elec_controller.turn_off_controller()
-        self.speaker.speak_text("蚊香已关闭。")
 
     def set_response_value(self, val):
         """Set the user response value."""
@@ -643,8 +583,8 @@ class AI_Server:
 
         return canceled_keyword_cb
 
-    @staticmethod
     def _recognized_keyword_cb(
+        self,
         keyword: str,
         recognizer: speechsdk.KeywordRecognizer,
         keyword_model: speechsdk.KeywordRecognitionModel,
@@ -652,16 +592,19 @@ class AI_Server:
     ) -> Callable:
         """Create a callback for recognized keyword."""
 
-        def recognized_keyword_cb(evt):
+        def recognized_keyword_cb(self: AI_Server, evt):
             result = evt.result
             if result.reason == speechsdk.ResultReason.RecognizedKeyword:
+                if len(keyword) < self.recognizer.get_max_len_recogized_words():
+                    return
+                self.recognizer.stop_recognizer()
                 logger.info("RECOGNIZED KEYWORD: {}".format(result.text))
                 self = AI_Server.__new__(AI_Server)
                 self._reset_response_time_counter()
                 callback()
                 recognizer.recognize_once_async(keyword_model)
 
-        return recognized_keyword_cb
+        return lambda evt: recognized_keyword_cb(self, evt)
 
     def auto_cool_mode(
         self,
@@ -777,7 +720,7 @@ class AI_Server:
 
         await self.ws_client_esp32.connect()
         tasks = [
-            self.stop_keyword_recognizers(),
+            self.response_timer_demon(),
             # self.monitor_tem_hum(),
             self.monitor_ch2o(),
             self.ws_client_esp32.receive_messages(),

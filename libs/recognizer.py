@@ -9,6 +9,7 @@ class Recognizer:
         self.azure_region = self.azure_config["region"]
         self.recognized_callback = recognized_callback
         self.is_stopping_recognizer = False
+        self.max_len_recogized_words = 0
         speech_config = speechsdk.SpeechConfig(
             subscription=self.azure_key,
             region=self.azure_region,
@@ -37,11 +38,15 @@ class Recognizer:
             lambda evt: print("CANCELED {}".format(evt))
         )
 
-    def is_stopping(self):
+    def is_stopping(self) -> bool:
         return self.is_stopping_recognizer
+
+    def get_max_len_recogized_words(self) -> int:
+        return self.max_len_recogized_words
 
     def start_recognizer(self):
         self.is_stopping_recognizer = False
+        self.max_len_recogized_words = 0
         self.auto_speech_recognizer.start_continuous_recognition()
 
     def stop_recognizer(self):
@@ -49,14 +54,21 @@ class Recognizer:
         self.auto_speech_recognizer.stop_continuous_recognition_async()
 
     def stop_recognizer_sync(self):
+        self.max_len_recogized_words = 0
         self.auto_speech_recognizer.stop_continuous_recognition()
 
     def _azure_stt_input_auto_recognizing(self, evt):
         cur_recognized_text = evt.result.text
+        size = len(cur_recognized_text)
+        if size > self.max_len_recogized_words:
+            self.max_len_recogized_words = size
         print("RECOGNIZING: {}".format(cur_recognized_text))
 
     def _azure_stt_input_auto_recognized(self, evt):
         cur_recognized_text = evt.result.text
+        size = len(cur_recognized_text)
+        if size > self.max_len_recogized_words:
+            self.max_len_recogized_words = size
         print("RECOGNIZED: {}".format(cur_recognized_text))
         if not self.is_stopping_recognizer:
             self.recognized_callback(cur_recognized_text)
