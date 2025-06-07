@@ -15,8 +15,9 @@ class Recognizer:
             region=self.azure_region,
             speech_recognition_language="zh-CN",
         )
-
-        audio_config = speechsdk.audio.AudioConfig(use_default_microphone=True)
+        microphone = configure["microphone"]["azure_recognizer"]
+        device_name = microphone["input_device_id"]
+        audio_config = speechsdk.audio.AudioConfig(device_name=device_name)
         self.auto_speech_recognizer = speechsdk.SpeechRecognizer(
             speech_config=speech_config, audio_config=audio_config
         )

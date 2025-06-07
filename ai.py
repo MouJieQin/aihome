@@ -742,6 +742,7 @@ class AI_Server:
             self.ws_client_esp32.receive_messages(),
             self.ws_client_esp32.sample_tem_hum(),
             self.ws_client_esp32.heartbeat_task(),
+            self.speaker.keep_alive_playback(),
             # asyncio.to_thread(self.sync_task, stop_event),
         ]
 
