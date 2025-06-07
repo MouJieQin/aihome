@@ -2,13 +2,76 @@ import os
 
 # Set the environment variable before importing pygame
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
-
+import pygame
 from pygame import mixer
+from collections import deque
 import threading
 import asyncio
 from typing import Dict, Optional
 from libs.log_config import logger
 import azure.cognitiveservices.speech as speechsdk
+import time
+
+
+class PygameAudioOutputStream(speechsdk.audio.PushAudioOutputStreamCallback):
+    """自定义音频输出流，将语音数据传递给Pygame"""
+
+    def __init__(self, audio_channel: pygame.mixer.Channel):
+        super().__init__()
+        # 创建一个内存流句柄
+        self._audio_buffer = bytearray()  # 累积音频数据的缓冲区
+        self.audio_queue = deque()
+        self.clock = pygame.time.Clock()
+        self.audio_channel = audio_channel
+        self.CHUNK_SIZE = 64000
+
+    def write(self, audio_buffer: memoryview) -> int:
+        """实现写入方法，将音频数据添加到Pygame音频队列"""
+        audio_data = bytes(audio_buffer)
+        self._audio_buffer.extend(audio_data)
+
+        # 当缓冲区积累足够数据时，创建音频块并添加到队列
+        while len(self._audio_buffer) >= self.CHUNK_SIZE:
+            chunk = self._audio_buffer[: self.CHUNK_SIZE]
+            self._audio_buffer = self._audio_buffer[self.CHUNK_SIZE :]
+
+            # 创建Pygame声音对象并添加到队列
+            try:
+                sound = pygame.sndarray.make_sound(
+                    pygame.sndarray.array(pygame.mixer.Sound(buffer=chunk))
+                )
+                # 如果通道当前未播放，立即开始播放
+                if not self.audio_channel.get_busy():
+                    self.audio_channel.play(sound)
+                else:
+                    # 如果通道正在播放，将声音对象排队等待播放
+                    self.audio_queue.append(sound)
+            except Exception as e:
+                logger.exception(f"Error creating sound chunk: {e}")
+        return len(audio_buffer)
+
+    def close(self) -> None:
+        """关闭流时的清理工作"""
+        self._audio_data = bytearray()
+        logger.info("Audio stream closed")
+
+    def handel_tail(self):
+        if self._audio_buffer:
+            try:
+                sound = pygame.sndarray.make_sound(
+                    pygame.sndarray.array(pygame.mixer.Sound(buffer=self._audio_buffer))
+                )
+                self._audio_buffer = bytearray()  # 清空缓冲区
+                if self.audio_channel.get_busy():
+                    self.audio_queue.append(sound)
+                else:
+                    self.audio_channel.play(sound)  # 直接播放
+                while self.audio_channel.get_busy():
+                    if not self.audio_channel.get_queue() and len(self.audio_queue) > 0:
+                        self.audio_channel.queue(self.audio_queue.popleft())
+                    time.sleep(0.1)
+            except Exception as e:
+                logger.exception(f"Error processing remaining audio: {e}")
 
 
 class Speaker:
@@ -22,30 +85,42 @@ class Speaker:
         self.azure_config = configure["azure"]
         self.azure_key = self.azure_config["key"]
         self.azure_region = self.azure_config["region"]
-        mixer.init()
+        self.speakers_config = configure["speakers"]
         # Cache loaded audio files
         self.audio_cache = {}
+        self._init_mixer()
         self._init_speech_synthesizer()
+
+    def _init_mixer(self):
+        """Initialize the Pygame mixer."""
+        device_name = self.speakers_config["ai_assistant"]["device_name"]
+        pygame.mixer.init(
+            frequency=16000, size=-16, channels=1, buffer=4096, devicename=device_name
+        )
+        self.clock = pygame.time.Clock()
+        self.audio_channel_synthesizer = pygame.mixer.Channel(0)  # 使用第一个音频通道
+        self.audio_channel_system_prompt = pygame.mixer.Channel(1)  # 使用第一个音频通道
 
     def _init_speech_synthesizer(self, voice_name: str = "zh-CN-XiaochenNeural"):
         """Initialize the speech synthesizer."""
         speech_config = speechsdk.SpeechConfig(
             subscription=self.azure_key, region=self.azure_region
         )
+        self.output_stream = PygameAudioOutputStream(self.audio_channel_synthesizer)
         audio_output_config = speechsdk.audio.AudioOutputConfig(
-            use_default_speaker=True
+            stream=speechsdk.audio.PushAudioOutputStream(self.output_stream)
         )
         # audio_output_config.
         speech_config.speech_synthesis_voice_name = voice_name
-        self.speech_synthesizer = speechsdk.SpeechSynthesizer(
-            speech_config=speech_config, audio_config=audio_output_config
-        )
         self.real_time_speech_synthesizer = speechsdk.SpeechSynthesizer(
             speech_config=speech_config, audio_config=audio_output_config
         )
 
     def _handle_tts_result(
-        self, tts_result_future, text_to_speak: str, file_name: Optional[str] = None
+        self,
+        tts_result_future: speechsdk.ResultFuture,
+        text_to_speak: str,
+        file_name: Optional[str] = None,
     ) -> bool:
         """Handle the result of text-to-speech synthesis."""
         if not tts_result_future:
@@ -56,6 +131,9 @@ class Speaker:
             == speechsdk.ResultReason.SynthesizingAudioCompleted
         ):
             logger.info(f"\nSpeech synthesized for text [{text_to_speak}]")
+            thread = threading.Thread(target=self.output_stream.handel_tail)
+            thread.daemon = True
+            thread.start()
             if file_name:
                 audio_data_stream = speechsdk.AudioDataStream(speech_synthesis_result)
                 audio_data_stream.save_to_wav_file(file_name)
@@ -84,7 +162,9 @@ class Speaker:
 
     def start_speaking_text(self, text: str):
         """Start speaking the given text in real-time."""
-        self.real_time_speech_synthesizer.start_speaking_text(text)
+        result = self.real_time_speech_synthesizer.speak_text_async(text)
+        return self._handle_tts_result(result, text)
+        # self.real_time_speech_synthesizer.start_speaking_text(text)
 
     def tts(self, text: str) -> bool:
         """Perform text-to-speech synthesis and handle the result."""
@@ -97,27 +177,27 @@ class Speaker:
         """Core logic for playing audio."""
         try:
             if not is_cache:
-                mixer.music.load(vfile)
-                mixer.music.play()
-                while mixer.music.get_busy() and (event is None or not event.is_set()):
+                sound = mixer.Sound(vfile)
+                self.audio_channel_system_prompt.play(sound)
+                while self.audio_channel_system_prompt.get_busy() and (
+                    event is None or not event.is_set()
+                ):
                     await asyncio.sleep(0.1)
                 if event and event.is_set():
-                    mixer.music.stop()
+                    self.audio_channel_system_prompt.stop()
             else:
                 if vfile not in self.audio_cache:
                     sound = mixer.Sound(vfile)
                     self.audio_cache[vfile] = sound
                 else:
                     sound = self.audio_cache[vfile]
-                channel = sound.play()
-                while (
-                    channel
-                    and channel.get_busy()
-                    and (event is None or not event.is_set())
+                self.audio_channel_system_prompt.play(sound)
+                while self.audio_channel_system_prompt.get_busy() and (
+                    event is None or not event.is_set()
                 ):
                     await asyncio.sleep(0.1)
-                if event and event.is_set() and channel:
-                    channel.stop()
+                if event and event.is_set():
+                    self.audio_channel_system_prompt.stop()
         except Exception as e:
             logger.exception(f"An error occurred while playing the audio: {e}")
 

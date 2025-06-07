@@ -759,4 +759,9 @@ AI = AI_Server(configure_path="./configure.json")
 
 if __name__ == "__main__":
     print(AI.get_states_of_all_devices())
-    asyncio.run(AI.main())
+    try:
+        asyncio.run(AI.main())
+    except KeyboardInterrupt:
+        logger.info("程序已停止")
+    except Exception as e:
+        logger.exception(f"发生错误: {e}")
