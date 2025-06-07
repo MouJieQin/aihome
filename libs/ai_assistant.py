@@ -2,6 +2,8 @@ from volcenginesdkarkruntime import Ark
 from libs.log_config import logger
 from typing import Dict, Any, Optional
 import datetime
+import json
+import os
 
 
 class AIassistant:
@@ -12,7 +14,15 @@ class AIassistant:
             base_url=self.volcengine["base_url"], api_key=self.volcengine["api_key"]
         )
         self.systenm_prompt = self._create_system_prompt(supported_commands)
+        self._init_history()
+
+    def _init_history(self):
         self.messages = [{"role": "system", "content": self.systenm_prompt}]
+        self.history_file = self.volcengine["chat_history_file"]
+        if os.path.exists(self.history_file):
+            with open(self.history_file, "r") as f:
+                messages_without_system = json.load(f)
+                self.messages.extend(messages_without_system)
 
     def _create_system_prompt(self, supported_commands: str) -> str:
         return (
@@ -75,10 +85,9 @@ class AIassistant:
         if len(self.messages) > 20:
             self.messages.pop(1)
             self.messages.pop(1)
-        import json
-
-        with open("ai_history.json", "w") as f:
-            json.dump(self.messages, f, ensure_ascii=False, indent=4)
+        # 排除系统消息，只保留用户和助手的消息
+        with open(self.history_file, "w") as f:
+            json.dump(self.messages[1:], f, ensure_ascii=False, indent=4)
 
     def chat(self, user_input: str, devices_states: str = "") -> Optional[str]:
         try:

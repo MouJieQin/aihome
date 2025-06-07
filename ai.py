@@ -711,9 +711,7 @@ class AI_Server:
         while True:
             result = await self.ws_client_esp32.get_ch2o()
             if result:
-                logger.warning(
-                    "CH2O: {} ppb    {} mg/m3".format(result["ppb"], result["mgm3"])
-                )
+                print("CH2O: {} ppb    {} mg/m3".format(result["ppb"], result["mgm3"]))
                 if result["mgm3"] > 0.08:
                     self.speaker.play_receive_response()
                     self.speaker.speak_text(
