@@ -156,18 +156,40 @@ class Speaker:
             )
         return False
 
+    def _get_volume_based_on_time(self):
+        """Get the volume based on the current time."""
+        current_time = time.localtime()
+        hour = current_time.tm_hour
+        if hour < 8 or hour >= 21:
+            return 0.3
+        elif 8 <= hour < 12:
+            return 0.8
+        elif 12 <= hour < 16:
+            return 0.5
+        else:
+            return 0.8
+
+    def _set_volume_based_on_time(self):
+        """Set the volume based on the current time."""
+        volume = self._get_volume_based_on_time()
+        self.audio_channel_synthesizer.set_volume(volume)
+        self.audio_channel_system_prompt.set_volume(volume)
+
     def speak_text(self, text: str):
         """Speak the given text in real-time."""
+        self._set_volume_based_on_time()
         self.real_time_speech_synthesizer.speak_text(text)
 
     def start_speaking_text(self, text: str):
         """Start speaking the given text in real-time."""
+        self._set_volume_based_on_time()
         result = self.real_time_speech_synthesizer.speak_text_async(text)
         return self._handle_tts_result(result, text)
         # self.real_time_speech_synthesizer.start_speaking_text(text)
 
     def tts(self, text: str) -> bool:
         """Perform text-to-speech synthesis and handle the result."""
+        self._set_volume_based_on_time()
         result = self.real_time_speech_synthesizer.speak_text_async(text)
         return self._handle_tts_result(result, text)
 
