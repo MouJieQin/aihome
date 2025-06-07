@@ -718,7 +718,7 @@ class AI_Server:
                         )
                     )
                     await asyncio.sleep(180)
-            await asyncio.sleep(3)
+            await asyncio.sleep(61)
 
     def sync_task(self, stop_event: asyncio.Event):
         """A sample synchronous task running in a separate thread."""
@@ -738,6 +738,7 @@ class AI_Server:
             # self.monitor_tem_hum(),
             self.monitor_ch2o(),
             self.ws_client_esp32.receive_messages(),
+            self.ws_client_esp32.sample_tem_hum(),
             self.ws_client_esp32.heartbeat_task(),
             # asyncio.to_thread(self.sync_task, stop_event),
         ]
