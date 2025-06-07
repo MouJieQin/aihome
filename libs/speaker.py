@@ -102,16 +102,19 @@ class Speaker:
         self.audio_channel_system_prompt = pygame.mixer.Channel(1)  # 使用第一个音频通道
 
         self.keep_alive_channel = pygame.mixer.Channel(2)
-        self.CHUNK_SIZE = 64000
-        silent_chunk = (
-            b"\x00" * self.CHUNK_SIZE
-        )  # 16位单声道静音数据（每个样本为0x0000）
-        self.silent_sound = pygame.mixer.Sound(buffer=silent_chunk)
+        self.keep_alive_channel.set_volume(0.1)
+        # self.CHUNK_SIZE = 64000
+        # silent_chunk = (
+        #     b"\x00" * self.CHUNK_SIZE * 8
+        # )
+        # self.silent_sound = pygame.mixer.Sound(buffer=silent_chunk)
+        self.silent_sound = mixer.Sound(self.audio_files["send_message"])
+        self.silent_sound.set_volume(0.1)
 
     async def keep_alive_playback(self):
         while True:
-            self.keep_alive_channel.play(self.silent_sound)  # 循环播放
-            await asyncio.sleep(180)
+            self.keep_alive_channel.play(self.silent_sound, loops=5)  # 循环播放
+            await asyncio.sleep(30)
 
     def _init_speech_synthesizer(self, voice_name: str = "zh-CN-XiaochenNeural"):
         """Initialize the speech synthesizer."""
