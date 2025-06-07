@@ -69,6 +69,7 @@ class AI_Server:
     def _init_porcupine(self):
         """Initialize Porcupine for wake word detection."""
         config_porcupine = self.configure["porcupine"]
+        config_microphone = self.configure["microphone"]
         self.porcupine = pvporcupine.create(
             access_key=config_porcupine["access_key"],
             model_path=config_porcupine["model_path"],
@@ -80,6 +81,7 @@ class AI_Server:
             channels=1,
             format=pyaudio.paInt16,
             input=True,
+            input_device_index=config_microphone["ai_assistant"]["input_device_index"],
             frames_per_buffer=self.porcupine.frame_length,
         )
         self._start_ai_awake_thread()
@@ -709,7 +711,9 @@ class AI_Server:
         while True:
             result = await self.ws_client_esp32.get_ch2o()
             if result:
-                print("CH2O: {} ppb    {} mg/m3".format(result["ppb"], result["mgm3"]))
+                logger.warning(
+                    "CH2O: {} ppb    {} mg/m3".format(result["ppb"], result["mgm3"])
+                )
                 if result["mgm3"] > 0.08:
                     self.speaker.play_receive_response()
                     self.speaker.speak_text(
@@ -758,7 +762,7 @@ class AI_Server:
 AI = AI_Server(configure_path="./configure.json")
 
 if __name__ == "__main__":
-    print(AI.get_states_of_all_devices())
+    logger.info(AI.get_states_of_all_devices())
     try:
         asyncio.run(AI.main())
     except KeyboardInterrupt:

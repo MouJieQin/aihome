@@ -85,7 +85,7 @@ class Speaker:
         self.azure_config = configure["azure"]
         self.azure_key = self.azure_config["key"]
         self.azure_region = self.azure_config["region"]
-        self.speakers_config = configure["speakers"]
+        self.speaker_config = configure["speaker"]
         # Cache loaded audio files
         self.audio_cache = {}
         self._init_mixer()
@@ -93,7 +93,7 @@ class Speaker:
 
     def _init_mixer(self):
         """Initialize the Pygame mixer."""
-        device_name = self.speakers_config["ai_assistant"]["device_name"]
+        device_name = self.speaker_config["ai_assistant"]["device_name"]
         pygame.mixer.init(
             frequency=16000, size=-16, channels=1, buffer=4096, devicename=device_name
         )
