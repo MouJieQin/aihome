@@ -96,7 +96,10 @@ class AI_Server:
         """Get the input device index by its name."""
         for i in range(self.pa.get_device_count()):
             device_info = self.pa.get_device_info_by_index(i)
-            if device_info["name"] == device_name and device_info["maxInputChannels"] !=0:
+            if (
+                device_info["name"] == device_name
+                and device_info["maxInputChannels"] != 0
+            ):
                 return i
         return None
 
@@ -210,7 +213,7 @@ class AI_Server:
                     "args": {
                         "value": {
                             "type": "int",
-                            "description": "[1, 22, 46, 70, 86, 100]分别对应一到六级风速百分比",
+                            "description": "[1, 22, 46, 70, 86, 100]分别对应一到六级风速百分比，当没说有特别说明时，风速指的是吊扇风速。",
                             "is_necessary": True,
                             "range": "[0,5]",
                             "condidates": {
@@ -261,6 +264,21 @@ class AI_Server:
                                 "Night Light": {"name": "夜灯模式"},
                             },
                         }
+                    },
+                },
+                "亮度和色温": {
+                    "function": self.light_bedroom.adjust_light_brightness_color_temp,
+                    "args": {
+                        "brightness": {
+                            "type": "int",
+                            "is_necessary": True,
+                            "range": "[0,255]",
+                        },
+                        "color_temp_kelvin": {
+                            "type": "int",
+                            "is_necessary": True,
+                            "range": "[3000,5700]",
+                        },
                     },
                 },
                 "开关": {

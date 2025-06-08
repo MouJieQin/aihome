@@ -81,6 +81,25 @@ class LightBedroom(HomeAssistantDevice):
             "light", "turn_on", {"entity_id": self.light_entity_id, "effect": mode}
         )
 
+    def adjust_light_brightness_color_temp(
+        self, brightness: int, color_temp_kelvin: int
+    ) -> None:
+        """
+        Adjusts the brightness and color temperature of the bedroom light.
+        Args:
+            brightness (int): The desired brightness value (0-255).
+            color_temp_kelvin (int): The desired color temperature in Kelvin (3000-5700).
+        """
+        self._call_service(
+            "light",
+            "turn_on",
+            {
+                "entity_id": self.light_entity_id,
+                "brightness": brightness,
+                "color_temp_kelvin": color_temp_kelvin,
+            },
+        )
+
     def turn_on_fan(self) -> None:
         """
         Turns on the bedroom fan.
