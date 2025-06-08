@@ -48,6 +48,8 @@ class AI_Server:
         self.callback_to_response_yes: Optional[Callable] = None
         self.callback_to_response_no: Optional[Callable] = None
 
+        self.is_activated = False
+
     def _load_configuration(self, configure_path: str):
         """Load configuration from the given file path."""
         with open(configure_path, mode="r", encoding="utf-8") as f:
@@ -118,7 +120,11 @@ class AI_Server:
                 result = self.porcupine.process(pcm)
                 if result >= 0:
                     logger.info(f"检测到唤醒词: あすな")
-                    self.activate_keyword_recognizers()
+                    if not self.is_activated:
+                        self.activate_keyword_recognizers()
+                    else:
+                        self._reset_response_time_counter()
+                        self.speaker.play_start_record()
 
         thread = threading.Thread(target=run_ai_awake)
         thread.daemon = True
@@ -175,9 +181,6 @@ class AI_Server:
         commands = json.loads(response)
         self.speaker.start_speaking_text(commands["あすな"])
         self._handle_ai_assistant_response_imple(commands, self.supported_commands)
-        import time
-
-        time.sleep(10)
 
     def _handle_ai_assistant_response_imple(self, commands: Dict, commands_: Dict):
         """Handle AI assistant response."""
@@ -578,6 +581,7 @@ class AI_Server:
         self.recognizer.stop_recognizer_sync()
         self.speaker.play_start_record()
         self.recognizer.start_recognizer()
+        self.is_activated = True
 
     def activate_response_keyword_recognizers(self):
         """Activate response-related keyword recognizers."""
@@ -607,6 +611,7 @@ class AI_Server:
                 self.stop_keyword_recognizers()
                 self.recognizer.stop_recognizer()
                 self.speaker.play_end_record()
+                self.is_activated = False
             await asyncio.sleep(self.RESPONSE_INTERVAL)
 
     @property

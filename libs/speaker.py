@@ -256,6 +256,7 @@ class Speaker:
         """Core logic for playing audio."""
         with self.lock:
             try:
+                self._set_volume_based_on_time()
                 if not is_cache:
                     sound = mixer.Sound(vfile)
                     self.audio_channel_system_prompt.play(sound)
