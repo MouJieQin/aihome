@@ -107,6 +107,10 @@ class Speaker:
         self.silent_sound = mixer.Sound(self.audio_files["send_message"])
         self.silent_sound.set_volume(0.1)
 
+    def close(self):
+        """Close the Pygame mixer."""
+        pygame.mixer.quit()
+
     async def keep_alive_playback(self):
         while True:
             self.keep_alive_channel.play(self.silent_sound, loops=5)  # 循环播放
@@ -267,8 +271,8 @@ class Speaker:
 
         def run_async_play():
             asyncio.run(self.play_audio(vfile, is_cache))
-            if vfile == self.audio_files["start_record"]:
-                asyncio.run(self.play_audio(vfile, is_cache))
+            # if vfile == self.audio_files["start_record"]:
+            #     asyncio.run(self.play_audio(vfile, is_cache))
 
         thread = threading.Thread(target=run_async_play)
         thread.daemon = True

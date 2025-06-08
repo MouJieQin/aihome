@@ -127,12 +127,12 @@ class AI_Server:
 
     def _close_porcupine(self):
         """Close Porcupine resources."""
-        if self.porcupine is not None:
-            self.porcupine.delete()
-        if self.audio_stream is not None:
-            self.audio_stream.close()
         if self.pa is not None:
             self.pa.terminate()
+        if self.audio_stream is not None:
+            self.audio_stream.close()
+        if self.porcupine is not None:
+            self.porcupine.delete()
 
     def _init_devices(self):
         """Initialize all smart devices."""
@@ -272,12 +272,12 @@ class AI_Server:
                         "brightness": {
                             "type": "int",
                             "is_necessary": True,
-                            "range": "[0,255]",
+                            "range": "[1,255]",
                         },
                         "color_temp_kelvin": {
                             "type": "int",
                             "is_necessary": True,
-                            "range": "[3000,5700]",
+                            "range": "[2700,5700]",
                         },
                     },
                 },
@@ -450,6 +450,10 @@ class AI_Server:
                             },
                             "unsupported": {"name": "不支持该指令"},
                             "confused": {"name": "无法识别指令"},
+                            "others": {
+                                "name": "其它指令",
+                                "description": "其它与家电无关但可以做到的指令。",
+                            },
                         },
                     }
                 },
@@ -784,9 +788,12 @@ class AI_Server:
             logger.warning("The program is interrupted by the user.")
         finally:
             await self.ws_client_esp32.close()
+            self.stop_keyword_recognizers()
+            self.recognizer.stop_recognizer()
             self._close_porcupine()
             stop_event.set()
             executor.shutdown()
+            self.speaker.close()
             logger.info("The program has been terminated.")
 
 

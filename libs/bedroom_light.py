@@ -88,7 +88,7 @@ class LightBedroom(HomeAssistantDevice):
         Adjusts the brightness and color temperature of the bedroom light.
         Args:
             brightness (int): The desired brightness value (0-255).
-            color_temp_kelvin (int): The desired color temperature in Kelvin (3000-5700).
+            color_temp_kelvin (int): The desired color temperature in Kelvin (2700-5700).
         """
         self._call_service(
             "light",
@@ -180,13 +180,6 @@ class LightBedroom(HomeAssistantDevice):
             ),
             "effect": state_details.get("attributes", {}).get("effect"),
             "rgb_color": state_details.get("attributes", {}).get("rgb_color"),
-            # "min_color_temp_kelvin": state_details.get("attributes", {}).get(
-            #     "min_color_temp_kelvin"
-            # ),
-            # "max_color_temp_kelvin": state_details.get("attributes", {}).get(
-            #     "max_color_temp_kelvin"
-            # ),
-            # "effect_list": state_details.get("attributes", {}).get("effect_list"),
         }
 
     def get_fan_state(self) -> Dict:
