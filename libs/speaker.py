@@ -14,41 +14,77 @@ import time
 
 
 class PygameAudioOutputStream(speechsdk.audio.PushAudioOutputStreamCallback):
-    """自定义音频输出流，将语音数据传递给Pygame"""
+    """
+    A custom audio output stream that passes speech data to Pygame.
+    """
 
     def __init__(self, audio_channel: pygame.mixer.Channel):
         super().__init__()
-        # 创建一个内存流句柄
-        self._audio_buffer = bytearray()  # 累积音频数据的缓冲区
+        # Memory stream handle: buffer to accumulate audio data
+        self._audio_buffer = bytearray()
+        # Queue to store Pygame sound objects
         self.audio_queue = deque()
+        # Pygame clock object for timing control
         self.clock = pygame.time.Clock()
+        # Pygame audio channel for playback
         self.audio_channel = audio_channel
+        # Size of each audio chunk to process
         self.CHUNK_SIZE = 192000
 
     def write(self, audio_buffer: memoryview) -> int:
-        """实现写入方法，将音频数据添加到Pygame音频队列"""
+        """
+        Implement the write method to add audio data to the Pygame audio queue.
+
+        Args:
+            audio_buffer (memoryview): A memory view of the audio data to be written.
+
+        Returns:
+            int: The length of the audio buffer written.
+        """
         audio_data = bytes(audio_buffer)
         self._audio_buffer.extend(audio_data)
 
-        # 当缓冲区积累足够数据时，创建音频块并添加到队列
+        # Process the buffer when it accumulates enough data
         while len(self._audio_buffer) >= self.CHUNK_SIZE:
+            self._process_audio_chunk()
+
+        return len(audio_buffer)
+
+    def _process_audio_chunk(self):
+        """
+        Process an audio chunk from the buffer, create a Pygame sound object,
+        and add it to the playback queue or play it immediately.
+        """
+        try:
+            # Extract a chunk from the buffer
             chunk = self._audio_buffer[: self.CHUNK_SIZE]
             self._audio_buffer = self._audio_buffer[self.CHUNK_SIZE :]
 
-            # 创建Pygame声音对象并添加到队列
-            try:
-                sound = pygame.sndarray.make_sound(
-                    pygame.sndarray.array(pygame.mixer.Sound(buffer=chunk))
-                )
-                # 如果通道当前未播放，立即开始播放
-                if not self.audio_channel.get_busy():
-                    self.audio_channel.play(sound)
-                else:
-                    # 如果通道正在播放，将声音对象排队等待播放
-                    self.audio_queue.append(sound)
-            except Exception as e:
-                logger.exception(f"Error creating sound chunk: {e}")
-        return len(audio_buffer)
+            # Create a Pygame sound object
+            sound = self._create_sound_from_chunk(chunk)
+
+            if not self.audio_channel.get_busy():
+                # Play the sound immediately if the channel is idle
+                self.audio_channel.play(sound)
+            else:
+                # Queue the sound if the channel is busy
+                self.audio_queue.append(sound)
+        except Exception as e:
+            logger.exception(f"Error creating sound chunk: {e}")
+
+    def _create_sound_from_chunk(self, chunk: bytes) -> pygame.mixer.Sound:
+        """
+        Create a Pygame sound object from an audio chunk.
+
+        Args:
+            chunk (bytes): A byte array representing an audio chunk.
+
+        Returns:
+            pygame.mixer.Sound: A Pygame sound object created from the chunk.
+        """
+        return pygame.sndarray.make_sound(
+            pygame.sndarray.array(pygame.mixer.Sound(buffer=chunk))
+        )
 
     def close(self) -> None:
         """关闭流时的清理工作"""
