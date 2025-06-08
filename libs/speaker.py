@@ -23,7 +23,7 @@ class PygameAudioOutputStream(speechsdk.audio.PushAudioOutputStreamCallback):
         self.audio_queue = deque()
         self.clock = pygame.time.Clock()
         self.audio_channel = audio_channel
-        self.CHUNK_SIZE = 64000
+        self.CHUNK_SIZE = 192000
 
     def write(self, audio_buffer: memoryview) -> int:
         """实现写入方法，将音频数据添加到Pygame音频队列"""
@@ -90,6 +90,7 @@ class Speaker:
         self.audio_cache = {}
         self._init_mixer()
         self._init_speech_synthesizer()
+        self.lock = threading.Lock()
 
     def _init_mixer(self):
         """Initialize the Pygame mixer."""
@@ -98,16 +99,11 @@ class Speaker:
             frequency=16000, size=-16, channels=1, buffer=4096, devicename=device_name
         )
         self.clock = pygame.time.Clock()
-        self.audio_channel_synthesizer = pygame.mixer.Channel(0)  # 使用第一个音频通道
-        self.audio_channel_system_prompt = pygame.mixer.Channel(1)  # 使用第一个音频通道
+        self.audio_channel_assistant_synthesizer = pygame.mixer.Channel(0)
+        self.audio_channel_system_prompt = pygame.mixer.Channel(1)
 
         self.keep_alive_channel = pygame.mixer.Channel(2)
         self.keep_alive_channel.set_volume(0.1)
-        # self.CHUNK_SIZE = 64000
-        # silent_chunk = (
-        #     b"\x00" * self.CHUNK_SIZE * 8
-        # )
-        # self.silent_sound = pygame.mixer.Sound(buffer=silent_chunk)
         self.silent_sound = mixer.Sound(self.audio_files["send_message"])
         self.silent_sound.set_volume(0.1)
 
@@ -121,7 +117,10 @@ class Speaker:
         speech_config = speechsdk.SpeechConfig(
             subscription=self.azure_key, region=self.azure_region
         )
-        self.output_stream = PygameAudioOutputStream(self.audio_channel_synthesizer)
+
+        self.output_stream = PygameAudioOutputStream(
+            self.audio_channel_assistant_synthesizer
+        )
         audio_output_config = speechsdk.audio.AudioOutputConfig(
             stream=speechsdk.audio.PushAudioOutputStream(self.output_stream)
         )
@@ -187,56 +186,60 @@ class Speaker:
     def _set_volume_based_on_time(self):
         """Set the volume based on the current time."""
         volume = self._get_volume_based_on_time()
-        self.audio_channel_synthesizer.set_volume(volume)
+        self.audio_channel_assistant_synthesizer.set_volume(volume)
         self.audio_channel_system_prompt.set_volume(volume)
 
     def speak_text(self, text: str):
         """Speak the given text in real-time."""
-        self._set_volume_based_on_time()
-        self.real_time_speech_synthesizer.speak_text(text)
+        with self.lock:
+            self._set_volume_based_on_time()
+            result = self.real_time_speech_synthesizer.speak_text_async(text)
+            return self._handle_tts_result(result, text)
 
     def start_speaking_text(self, text: str):
         """Start speaking the given text in real-time."""
-        self._set_volume_based_on_time()
-        result = self.real_time_speech_synthesizer.speak_text_async(text)
-        return self._handle_tts_result(result, text)
-        # self.real_time_speech_synthesizer.start_speaking_text(text)
+        with self.lock:
+            self._set_volume_based_on_time()
+            result = self.real_time_speech_synthesizer.speak_text_async(text)
+            return self._handle_tts_result(result, text)
 
     def tts(self, text: str) -> bool:
         """Perform text-to-speech synthesis and handle the result."""
-        self._set_volume_based_on_time()
-        result = self.real_time_speech_synthesizer.speak_text_async(text)
-        return self._handle_tts_result(result, text)
+        with self.lock:
+            self._set_volume_based_on_time()
+            result = self.real_time_speech_synthesizer.speak_text_async(text)
+            return self._handle_tts_result(result, text)
 
     async def _play_audio_core(
         self, vfile: str, is_cache: bool, event: Optional[asyncio.Event]
     ):
         """Core logic for playing audio."""
-        try:
-            if not is_cache:
-                sound = mixer.Sound(vfile)
-                self.audio_channel_system_prompt.play(sound)
-                while self.audio_channel_system_prompt.get_busy() and (
-                    event is None or not event.is_set()
-                ):
-                    await asyncio.sleep(0.1)
-                if event and event.is_set():
-                    self.audio_channel_system_prompt.stop()
-            else:
-                if vfile not in self.audio_cache:
+        with self.lock:
+            try:
+                if not is_cache:
                     sound = mixer.Sound(vfile)
-                    self.audio_cache[vfile] = sound
+                    self.audio_channel_system_prompt.play(sound)
+                    while self.audio_channel_system_prompt.get_busy() and (
+                        event is None or not event.is_set()
+                    ):
+                        await asyncio.sleep(0.1)
+                    if event and event.is_set():
+                        self.audio_channel_system_prompt.stop()
                 else:
-                    sound = self.audio_cache[vfile]
-                self.audio_channel_system_prompt.play(sound)
-                while self.audio_channel_system_prompt.get_busy() and (
-                    event is None or not event.is_set()
-                ):
-                    await asyncio.sleep(0.1)
-                if event and event.is_set():
-                    self.audio_channel_system_prompt.stop()
-        except Exception as e:
-            logger.exception(f"An error occurred while playing the audio: {e}")
+                    if vfile not in self.audio_cache:
+                        sound = mixer.Sound(vfile)
+                        self.audio_cache[vfile] = sound
+                    else:
+                        sound = self.audio_cache[vfile]
+                    self.audio_channel_system_prompt.play(sound)
+                    while self.audio_channel_system_prompt.get_busy() and (
+                        event is None or not event.is_set()
+                    ):
+                        await asyncio.sleep(0.1)
+                    if event and event.is_set():
+                        self.audio_channel_system_prompt.stop()
+            except Exception as e:
+                logger.exception(f"An error occurred while playing the audio: {e}")
 
     async def play_audio(
         self, vfile: str, is_cache: bool = False, event: Optional[asyncio.Event] = None

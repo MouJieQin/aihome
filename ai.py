@@ -76,15 +76,29 @@ class AI_Server:
             keyword_paths=[config_porcupine["keyword_paths"]],
         )
         self.pa = pyaudio.PyAudio()
+        input_device_name = config_microphone["ai_assistant"]["input_device_name"]
+        input_device_index = self._get_input_device_index_by_name(input_device_name)
+        if input_device_index is None:
+            logger.error(f"未找到名为 {input_device_name} 的输入设备")
+            exit(1)
+            return
         self.audio_stream = self.pa.open(
             rate=self.porcupine.sample_rate,
             channels=1,
             format=pyaudio.paInt16,
             input=True,
-            input_device_index=config_microphone["ai_assistant"]["input_device_index"],
+            input_device_index=input_device_index,
             frames_per_buffer=self.porcupine.frame_length,
         )
         self._start_ai_awake_thread()
+
+    def _get_input_device_index_by_name(self, device_name: str) -> Optional[int]:
+        """Get the input device index by its name."""
+        for i in range(self.pa.get_device_count()):
+            device_info = self.pa.get_device_info_by_index(i)
+            if device_info["name"] == device_name and device_info["maxInputChannels"] !=0:
+                return i
+        return None
 
     def _start_ai_awake_thread(self) -> threading.Thread:
         """Start the thread for wake word detection."""
