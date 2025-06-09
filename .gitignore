@@ -3,6 +3,7 @@ Voices/**
 **/.DS_Store
 .vscode/
 **/*.log
+**/*.db
 **/__pycache__/
 configure.json
 tmp/
@@ -10,3 +11,4 @@ aihome.code-workspace
 config
 ai_history.json
 logs/
+data/

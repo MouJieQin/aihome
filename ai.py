@@ -17,6 +17,7 @@ from libs.speaker import Speaker
 from libs.recognizer import Recognizer
 from libs.ai_assistant import AIassistant
 from libs.homeassistant_vm_manager import VirtualBoxController
+from libs.task_scheduler import TaskScheduler
 from libs.log_config import logger
 from datetime import datetime
 
@@ -43,6 +44,7 @@ class AI_Server:
         self._init_devices()
         self._init_keyword_recognizers()
         self._init_ai_assistant()
+        self._init_task_scheduler()
 
         self.response_user = None
         self.callback_to_response_yes: Optional[Callable] = None
@@ -60,6 +62,11 @@ class AI_Server:
         ha_vm_uuid = self.configure["virtualbox"]["ha_vm_uuid"]
         self.ha_vm_manager = VirtualBoxController(ha_vm_uuid)
         self.ha_vm_manager.start_vm()
+
+    def _init_task_scheduler(self):
+        """Initialize the TaskScheduler."""
+        self.task_scheduler = TaskScheduler(self.configure)
+        self.task_scheduler.start()
 
     def _init_ai_assistant(self):
         """Initialize the AI assistant."""
@@ -590,13 +597,13 @@ class AI_Server:
 
     def activate_keyword_recognizers(self):
         """Activate all keyword recognizers except keep-alive ones."""
+        self.speaker.play_start_record()
+        self.recognizer.stop_recognizer_sync()
+        self.recognizer.start_recognizer()
         for key, items in self.keyword_recognizers.items():
             if key not in self.independent_keyword_list:
                 items["recognizer"].recognize_once_async(items["model"])
         self._reset_response_time_counter()
-        self.recognizer.stop_recognizer_sync()
-        self.speaker.play_start_record()
-        self.recognizer.start_recognizer()
         self.is_activated = True
 
     def activate_response_keyword_recognizers(self):
@@ -810,6 +817,7 @@ class AI_Server:
             await self.ws_client_esp32.close()
             self.stop_keyword_recognizers()
             self.recognizer.stop_recognizer()
+            self.task_scheduler.stop()
             self._close_porcupine()
             stop_event.set()
             executor.shutdown()
