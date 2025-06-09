@@ -61,14 +61,23 @@ class ClimateBedroom(HomeAssistantDevice):
         Args:
             temperature (int, optional): The desired temperature. Defaults to 25.
         """
-        self.set_preset_mode("none")
+        self.set_temperature(temperature)
+        self.set_preset_mode("boost")
         self.set_hvac_mode("cool")
         self.set_fan_mode("high")
-        self.set_temperature(temperature)
         self.set_swing_mode("off")
         self.turn_off_health_mode()
         self.turn_off_fresh_air_mode()
         self.turn_off_quiet_mode()
+
+    def default_cool_mode(self) -> None:
+        """
+        Activates the default mode for the bedroom climate device.
+        """
+        self.turn_on_health_mode()
+        self.turn_on_quiet_mode()
+        self.set_preset_mode("none")
+        self.set_fan_mode("low")
 
     def set_preset_mode(self, preset_mode: str) -> None:
         """

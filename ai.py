@@ -296,6 +296,22 @@ class AI_Server:
                 },
             },
             "空调": {
+                "预置模式": {
+                    "function": self.climate_bedroom.set_preset_mode,
+                    "args": {
+                        "preset_mode": {
+                            "type": "str",
+                            "is_necessary": True,
+                            "condidates": {
+                                "eco": {"name": "节能"},
+                                "boost": {"name": "强劲"},
+                                "none": {"name": "无"},
+                                "sleep": {"name": "睡眠"},
+                                "away": {"name": "离家"},
+                            },
+                        }
+                    },
+                },
                 "高级模式": {
                     "健康模式": {
                         "function": self.climate_bedroom.switch_health_mode,
@@ -701,8 +717,7 @@ class AI_Server:
                             )
                         )
                         await asyncio.sleep(1)
-                        self.climate_bedroom.turn_on_health_mode()
-                        self.climate_bedroom.turn_on_quiet_mode()
+                        self.climate_bedroom.default_cool_mode()
                         self.light_bedroom.adjust_fan_speed_to_min()
                         break
                 await asyncio.sleep(30)
