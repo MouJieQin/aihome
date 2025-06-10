@@ -206,6 +206,7 @@ class AI_Server:
 
     def _task_scheduler_callback(self, args: Dict):
         """Callback function for task scheduler."""
+        self.speaker.play_receive_response()
         self._ai_assistant_response_callback(args)
 
     def _create_supported_function_for_ai_assistant(self) -> Dict:
@@ -521,6 +522,10 @@ class AI_Server:
                             },
                             "unsupported": {"name": "不支持该指令"},
                             "confused": {"name": "无法识别指令"},
+                            "notification": {
+                                "name": "通知",
+                                "description": "通知用户一些信息，比如在定时任务中。",
+                            },
                             "others": {
                                 "name": "其它指令",
                                 "description": "其它与家电无关但可以做到的指令。",
@@ -549,6 +554,12 @@ class AI_Server:
             self._handle_confused_function()
         elif type == "query":
             self._handle_query_function()
+        elif type == "notification":
+            self._handle_notification_function()
+
+    def _handle_notification_function(self):
+        """Handle notification functions."""
+        logger.info("通知...")
 
     def _handle_query_function(self):
         """Handle query functions."""
