@@ -13,9 +13,10 @@ class TaskScheduler:
 
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"  # 时间格式
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], _task_scheduler_callback: Callable):
         """初始化任务调度器并连接到数据库"""
         self.db_file = config["task_scheduler"]["db_file"]
+        self._task_scheduler_callback = _task_scheduler_callback
         self._stop_event = threading.Event()
         self._reload_event = threading.Event()  # 任务变更事件
         self._scheduler_thread = None
@@ -86,44 +87,40 @@ class TaskScheduler:
     def add_task(
         self,
         task_name: str,
-        callback: Callable,
-        run_at: datetime.datetime,
-        interval: Optional[Tuple[int, int, int, int]] = None,
-        args: Optional[List[Any]] = None,
-        kwargs: Optional[Dict[str, Any]] = None,
+        run_at: Union[datetime.datetime, str],
+        interval: Union[Tuple[int, int, int, int], str, None] = None,
+        args: Optional[Dict[str, Any]] = None,
     ) -> int:
         """添加一个新任务到调度器
 
         Args:
-            interval: (days, hours, minutes, seconds) 格式的时间间隔
-            args: 传递给回调函数的位置参数
-            kwargs: 传递给回调函数的关键字参数
+            task_name: 任务名称
+            run_at: 任务首次运行时间，可以是datetime对象或YYYY-MM-DD HH:MM:SS格式字符串
+            interval: 任务的重复间隔，可以是(天, 时, 分, 秒)元组或DD HH:MM:SS格式字符串
+            args: 任务的参数，将作为回调函数的参数传递，必须是JSON可序列化的字典
         Returns:
             任务ID
         """
-        if not callable(callback):
-            raise ValueError("回调函数必须是可调用的")
-
-        next_run_str = self._datetime_to_str(run_at)
-        interval_str = self._interval_to_str(*interval) if interval else None
+        next_run_str = (
+            run_at if isinstance(run_at, str) else self._datetime_to_str(run_at)
+        )
+        interval_str = (
+            interval
+            if isinstance(interval, str)
+            else (self._interval_to_str(*interval) if interval else None)
+        )
 
         # 序列化参数为JSON
-        args_data = {"args": args or [], "kwargs": kwargs or {}}
-        args_json = json.dumps(args_data)
+        args_json = json.dumps(args, ensure_ascii=False)
 
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """INSERT INTO tasks (task_name, callback, args_json, next_run_time, interval, is_active) 
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (
-                    task_name,
-                    callback.__name__,
-                    args_json,
-                    next_run_str,
-                    interval_str,
-                    1,
-                ),
+                # fmt: off
+                (task_name, self._task_scheduler_callback.__name__, args_json, next_run_str, interval_str, 1,),
+                # fmt: on
             )
             task_id = cursor.lastrowid
             conn.commit()
@@ -179,22 +176,13 @@ class TaskScheduler:
             cursor.execute("SELECT * FROM tasks ORDER BY next_run_time")
             return [dict(row) for row in cursor.fetchall()]
 
-    def _execute_task(self, task_id: int, callback_name: str, args_json: str) -> None:
+    def _execute_task(self, task_id: int, args_json: str) -> None:
         """执行指定任务"""
-        callback = globals().get(callback_name)
-
-        if not callable(callback):
-            print(f"错误: 找不到名为 {callback_name} 的可调用函数")
-            return
-
         try:
             # 解析参数
             args_data = json.loads(args_json)
-            args = args_data.get("args", [])
-            kwargs = args_data.get("kwargs", {})
-
             # 执行带参数的回调函数
-            callback(*args, **kwargs)
+            self._task_scheduler_callback(args_data)
 
             # 更新任务状态
             with sqlite3.connect(self.db_file) as conn:
@@ -255,9 +243,7 @@ class TaskScheduler:
 
                 if wait_time <= 0:
                     # 执行到期的任务
-                    self._execute_task(
-                        next_task["id"], next_task["callback"], next_task["args_json"]
-                    )
+                    self._execute_task(next_task["id"], next_task["args_json"])
                 else:
                     # 等待直到下一个任务执行时间或任务变更事件
                     # 使用最小等待时间和事件轮询的方式
@@ -298,4 +284,3 @@ class TaskScheduler:
         if self._scheduler_thread:
             self._scheduler_thread.join(timeout=1.0)
         print("任务调度器已停止")
-

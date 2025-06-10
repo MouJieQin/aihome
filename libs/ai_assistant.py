@@ -53,7 +53,7 @@ class AIassistant:
                             "temperature": 25
                         }
                     }
-                }Ï
+                }
                 "あすな": "空调温度将被设置为25度，风速设置为中低速。"
             }
             """

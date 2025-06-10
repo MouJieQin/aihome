@@ -7,7 +7,7 @@ import asyncio
 import json
 import threading
 import os
-from typing import Dict, Callable, Optional
+from typing import Dict, Callable, Optional, Tuple, Any
 from libs.bedroom_light import LightBedroom
 from libs.bedroom_climate import ClimateBedroom
 from libs.elec_meter_controller import ElecMeterController
@@ -65,7 +65,9 @@ class AI_Server:
 
     def _init_task_scheduler(self):
         """Initialize the TaskScheduler."""
-        self.task_scheduler = TaskScheduler(self.configure)
+        self.task_scheduler = TaskScheduler(
+            self.configure, self._task_scheduler_callback
+        )
         self.task_scheduler.start()
 
     def _init_ai_assistant(self):
@@ -186,17 +188,25 @@ class AI_Server:
     def _handle_ai_assistant_response(self, response: str):
         """Handle AI assistant response."""
         commands = json.loads(response)
-        self.speaker.start_speaking_text(commands["あすな"])
-        self._handle_ai_assistant_response_imple(commands, self.supported_commands)
+        self._ai_assistant_response_callback(commands)
 
-    def _handle_ai_assistant_response_imple(self, commands: Dict, commands_: Dict):
+    def _ai_assistant_response_callback(self, commands: Dict):
+        """Callback function for AI assistant response."""
+        self.speaker.start_speaking_text(commands["あすな"])
+        self._ai_assistant_response_callback_imple(commands, self.supported_commands)
+
+    def _ai_assistant_response_callback_imple(self, commands: Dict, commands_: Dict):
         """Handle AI assistant response."""
         for key, items in commands.items():
             if key != "あすな":
                 if "args" in items.keys():
                     commands_[key]["function"](**items["args"])
                 else:
-                    self._handle_ai_assistant_response_imple(items, commands_[key])
+                    self._ai_assistant_response_callback_imple(items, commands_[key])
+
+    def _task_scheduler_callback(self, args: Dict):
+        """Callback function for task scheduler."""
+        self._ai_assistant_response_callback(args)
 
     def _create_supported_function_for_ai_assistant(self) -> Dict:
         """Create a dictionary of supported functions for AI assistant."""
@@ -287,7 +297,7 @@ class AI_Server:
                         "color_temp_kelvin": {
                             "type": "int",
                             "is_necessary": True,
-                            "range": "[2700,5700]",
+                            "range": "[3000,5700]",
                         },
                     },
                 },
@@ -464,6 +474,41 @@ class AI_Server:
                     },
                 }
             },
+            "日程安排程序": {
+                "添加日程": {
+                    "function": self._add_scheduler_task,
+                    "args": {
+                        "task_name": {
+                            "type": "str",
+                            "is_necessary": True,
+                        },
+                        "run_at": {
+                            "type": "str",
+                            "format": "YYYY-MM-DD HH:MM:SS",
+                            "description": "任务的运行时间。",
+                            "is_necessary": True,
+                        },
+                        "interval": {
+                            "type": "str|None",
+                            "format": "DD HH:MM:SS",
+                            "is_necessary": True,
+                            "description": "任务的重复间隔，None表示只运行一次。主意是null类型而不是字符串。",
+                            "example": {
+                                "interval": None,
+                            },
+                        },
+                        "args": {
+                            "type": "dict",
+                            "is_necessary": True,
+                            "description": "任务的参数。和控制家电的回复相同。一定要包含「あすな」参数，到时任务执行时播放。",
+                            "example": {
+                                "灯光": {"模式": {"args": {"mode": "Cinema Mode"}}},
+                                "あすな": "执行日程任务，把灯光调成影院模式，准备享受沉浸式观影体验吧！",
+                            },
+                        },
+                    },
+                }
+            },
             "其它": {
                 "function": self._handle_others,
                 "args": {
@@ -485,6 +530,16 @@ class AI_Server:
                 },
             },
         }
+
+    def _add_scheduler_task(
+        self,
+        task_name: str,
+        run_at: str,
+        interval: Optional[Tuple[int, int, int, int]] = None,
+        args: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Add a task to the scheduler."""
+        return self.task_scheduler.add_task(task_name, run_at, interval, args)
 
     def _handle_others(self, type: str):
         """Handle errors based on the error type."""

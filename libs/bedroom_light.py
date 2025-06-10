@@ -88,7 +88,7 @@ class LightBedroom(HomeAssistantDevice):
         Adjusts the brightness and color temperature of the bedroom light.
         Args:
             brightness (int): The desired brightness value (0-255).
-            color_temp_kelvin (int): The desired color temperature in Kelvin (2700-5700).
+            color_temp_kelvin (int): The desired color temperature in Kelvin (3000-5700).
         """
         self._call_service(
             "light",
