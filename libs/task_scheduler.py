@@ -250,8 +250,6 @@ class TaskScheduler:
                         (new_next_run_str, task_id),
                     )
             conn.commit()
-        # 触发重新加载，确保调度器能立即响应新任务
-        self._trigger_reload()
 
     def _task_status_hanlder(self, exception_flag: bool, task_id: int) -> None:
         # 更新任务状态
