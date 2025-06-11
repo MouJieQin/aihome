@@ -16,6 +16,7 @@ class TaskScheduler:
     STATUS_RUNNING = "RUNNING"  # 运行中（正在执行）
     STATUS_COMPLETED = "COMPLETED"  # 已完成
     STATUS_FAILED = "FAILED"  # 执行失败
+    STATUS_OVERDUE = "OVERDUE"  # 已过期
 
     def __init__(self, config: Dict[str, Any], _task_scheduler_callback: Callable):
         """初始化任务调度器并连接到数据库"""
@@ -215,8 +216,15 @@ class TaskScheduler:
             if task:
                 next_run_str, interval_str = task
                 if not interval_str:
-                    logger.error(f"任务ID {task_id} 没有设置重复间隔")
-                    return False
+                    if next_run_str > self._now_str():
+                        return True
+                    else:
+                        cursor.execute(
+                            "UPDATE tasks SET status =? WHERE id =?",
+                            (self.STATUS_OVERDUE, task_id),
+                        )
+                        logger.error(f"任务ID {task_id} 已过期")
+                        return False
                 else:
                     new_next_run_str = self._get_next_run_time(
                         next_run_str, interval_str
@@ -237,10 +245,10 @@ class TaskScheduler:
         """重新计算所有任务的下一次运行时间"""
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, next_run_time, interval FROM tasks")
+            cursor.execute("SELECT id, next_run_time, interval, status FROM tasks")
             tasks = cursor.fetchall()
             for task in tasks:
-                task_id, next_run_str, interval_str = task
+                task_id, next_run_str, interval_str, status = task
                 if interval_str:
                     new_next_run_str = self._get_next_run_time(
                         next_run_str, interval_str
@@ -249,6 +257,12 @@ class TaskScheduler:
                         "UPDATE tasks SET next_run_time =? WHERE id =?",
                         (new_next_run_str, task_id),
                     )
+                else:
+                    if status == self.STATUS_WAITING and next_run_str < self._now_str():
+                        cursor.execute(
+                            "UPDATE tasks SET status =? WHERE id =?",
+                            (self.STATUS_OVERDUE, task_id),
+                        )
             conn.commit()
 
     def _task_status_hanlder(self, exception_flag: bool, task_id: int) -> None:

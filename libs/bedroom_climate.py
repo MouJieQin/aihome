@@ -76,7 +76,7 @@ class ClimateBedroom(HomeAssistantDevice):
         """
         self.turn_on_health_mode()
         self.turn_on_quiet_mode()
-        self.set_preset_mode("none")
+        self.set_preset_mode("eco")
         self.set_fan_mode("low")
 
     def set_preset_mode(self, preset_mode: str) -> None:
