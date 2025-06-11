@@ -1,10 +1,8 @@
 import sqlite3
-import time
 import threading
 import datetime
-import signal
-import os
 import json
+from libs.log_config import logger
 from typing import Callable, Dict, Any, Optional, Tuple, List, Union
 
 
@@ -12,6 +10,12 @@ class TaskScheduler:
     """增强型任务调度器，支持低CPU负载运行和程序重启后恢复未完成的任务"""
 
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"  # 时间格式
+
+    # 任务状态常量
+    STATUS_WAITING = "WAITING"  # 等待执行
+    STATUS_RUNNING = "RUNNING"  # 运行中（正在执行）
+    STATUS_COMPLETED = "COMPLETED"  # 已完成
+    STATUS_FAILED = "FAILED"  # 执行失败
 
     def __init__(self, config: Dict[str, Any], _task_scheduler_callback: Callable):
         """初始化任务调度器并连接到数据库"""
@@ -37,8 +41,8 @@ class TaskScheduler:
                     interval TEXT,                  -- DD HH:MM:SS格式
                     last_run_time TEXT,             -- YYYY-MM-DD HH:MM:SS格式
                     is_active BOOLEAN NOT NULL DEFAULT 1,  -- 任务是否激活
-                    completed BOOLEAN NOT NULL DEFAULT 0  -- 任务是否完成
-                )
+                    status TEXT NOT NULL DEFAULT 'WAITING'   -- 任务状态
+                );
             """
             )
             conn.commit()
@@ -78,6 +82,28 @@ class TaskScheduler:
     def _interval_to_seconds(days: int, hours: int, minutes: int, seconds: int) -> int:
         """将天时分秒转换为总秒数"""
         return days * 86400 + hours * 3600 + minutes * 60 + seconds
+
+    @staticmethod
+    def _get_next_run_time(cur_next_run_time_str: str, interval_str: str) -> str:
+        """计算下一次运行时间"""
+        cur_next_run_time = TaskScheduler._str_to_datetime(cur_next_run_time_str)
+        now = datetime.datetime.now()
+        if cur_next_run_time > now:
+            return cur_next_run_time_str
+        time_diff = cur_next_run_time - now
+        seconds_diff = time_diff.total_seconds()
+        days, hours, minutes, seconds = TaskScheduler._str_to_interval(interval_str)
+        seconds_interval = TaskScheduler._interval_to_seconds(
+            days, hours, minutes, seconds
+        )
+        ceil = (seconds_diff // seconds_interval) + (
+            1 if (seconds_diff % seconds_interval) != 0 else 0
+        )
+
+        next_run_str = TaskScheduler._datetime_to_str(
+            cur_next_run_time + datetime.timedelta(seconds=ceil * seconds_interval)
+        )
+        return next_run_str
 
     def _trigger_reload(self) -> None:
         """触发重新加载事件"""
@@ -154,11 +180,13 @@ class TaskScheduler:
         Returns:
             是否成功更新
         """
+        if self._renew_task(task_id) == False:
+            return False
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE tasks SET is_active = ? WHERE id = ? AND completed = 0",
-                (1 if active else 0, task_id),
+                "UPDATE tasks SET is_active = ? WHERE id = ? AND status != ?",
+                (1 if active else 0, task_id, self.STATUS_COMPLETED),
             )
             conn.commit()
             updated = cursor.rowcount > 0
@@ -176,45 +204,123 @@ class TaskScheduler:
             cursor.execute("SELECT * FROM tasks ORDER BY next_run_time")
             return [dict(row) for row in cursor.fetchall()]
 
+    def _renew_task(self, task_id: int) -> bool:
+        """重新计算指定任务的下一次运行时间"""
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT next_run_time, interval FROM tasks WHERE id =?", (task_id,)
+            )
+            task = cursor.fetchone()
+            if task:
+                next_run_str, interval_str = task
+                if not interval_str:
+                    logger.error(f"任务ID {task_id} 没有设置重复间隔")
+                    return False
+                else:
+                    new_next_run_str = self._get_next_run_time(
+                        next_run_str, interval_str
+                    )
+                    if new_next_run_str != next_run_str:
+                        cursor.execute(
+                            "UPDATE tasks SET next_run_time =? WHERE id =?",
+                            (new_next_run_str, task_id),
+                        )
+                        conn.commit()
+                    return True
+            else:
+                logger.error(f"任务ID {task_id} 不存在")
+                return False
+        return False
+
+    def _renew_all_tasks(self) -> None:
+        """重新计算所有任务的下一次运行时间"""
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, next_run_time, interval FROM tasks")
+            tasks = cursor.fetchall()
+            for task in tasks:
+                task_id, next_run_str, interval_str = task
+                if interval_str:
+                    new_next_run_str = self._get_next_run_time(
+                        next_run_str, interval_str
+                    )
+                    cursor.execute(
+                        "UPDATE tasks SET next_run_time =? WHERE id =?",
+                        (new_next_run_str, task_id),
+                    )
+            conn.commit()
+        # 触发重新加载，确保调度器能立即响应新任务
+        self._trigger_reload()
+
+    def _task_status_hanlder(self, exception_flag: bool, task_id: int) -> None:
+        # 更新任务状态
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            now_str = self._now_str()
+            cursor.execute("SELECT interval FROM tasks WHERE id = ?", (task_id,))
+            interval_str = cursor.fetchone()[0]
+
+            if interval_str:
+                days, hours, minutes, seconds = self._str_to_interval(interval_str)
+                total_seconds = self._interval_to_seconds(days, hours, minutes, seconds)
+
+                next_run_str = self._datetime_to_str(
+                    self._str_to_datetime(now_str)
+                    + datetime.timedelta(seconds=total_seconds)
+                )
+                task_status = (
+                    self.STATUS_WAITING if not exception_flag else self.STATUS_FAILED
+                )
+                cursor.execute(
+                    """UPDATE tasks SET next_run_time = ?, status = ? 
+                    WHERE id = ?""",
+                    (next_run_str, task_status, task_id),
+                )
+            else:
+                task_status = (
+                    self.STATUS_COMPLETED if not exception_flag else self.STATUS_FAILED
+                )
+                cursor.execute(
+                    "UPDATE tasks SET status = ? WHERE id = ?",
+                    (task_status, task_id),
+                )
+            conn.commit()
+
     def _execute_task(self, task_id: int, args_json: str) -> None:
         """执行指定任务"""
+        exception_flag_outer = False
         try:
             # 解析参数
             args_data = json.loads(args_json)
             # 执行带参数的回调函数
-            self._task_scheduler_callback(args_data)
 
-            # 更新任务状态
             with sqlite3.connect(self.db_file) as conn:
                 cursor = conn.cursor()
-                now_str = self._now_str()
-                cursor.execute("SELECT interval FROM tasks WHERE id = ?", (task_id,))
-                interval_str = cursor.fetchone()[0]
-
-                if interval_str:
-                    days, hours, minutes, seconds = self._str_to_interval(interval_str)
-                    total_seconds = self._interval_to_seconds(
-                        days, hours, minutes, seconds
-                    )
-
-                    next_run_str = self._datetime_to_str(
-                        self._str_to_datetime(now_str)
-                        + datetime.timedelta(seconds=total_seconds)
-                    )
-
-                    cursor.execute(
-                        """UPDATE tasks SET last_run_time = ?, next_run_time = ?, completed = 0 
-                           WHERE id = ?""",
-                        (now_str, next_run_str, task_id),
-                    )
-                else:
-                    cursor.execute(
-                        "UPDATE tasks SET last_run_time = ?, completed = 1 WHERE id = ?",
-                        (now_str, task_id),
-                    )
+                cursor.execute(
+                    """UPDATE tasks SET status = ?, last_run_time =?
+                        WHERE id = ?""",
+                    (self.STATUS_RUNNING, self._now_str(), task_id),
+                )
                 conn.commit()
+
+            def _execute_task_imple() -> None:
+                """执行任务的内部函数"""
+                exception_flag = False
+                try:
+                    self._task_scheduler_callback(args_data)
+                except Exception as e:
+                    logger.exception(f"任务执行失败: {e}")
+                    exception_flag = True
+                finally:
+                    self._task_status_hanlder(exception_flag, task_id)
+
+            threading.Thread(target=_execute_task_imple, daemon=False).start()
         except Exception as e:
-            print(f"执行任务时出错: {e}")
+            logger.exception(f"执行任务时出错: {e}")
+            exception_flag_outer = True
+        finally:
+            self._task_status_hanlder(exception_flag_outer, task_id)
 
     def _get_next_task(self) -> Optional[Dict[str, Any]]:
         """获取下一个要执行的任务"""
@@ -223,8 +329,19 @@ class TaskScheduler:
             cursor = conn.cursor()
             cursor.execute(
                 """SELECT id, task_name, callback, args_json, next_run_time, interval 
-                   FROM tasks WHERE is_active = 1 AND completed = 0 
-                   ORDER BY next_run_time LIMIT 1"""
+                FROM tasks 
+                WHERE is_active = 1 
+                AND status != ? 
+                AND ( 
+                    (interval IS NULL AND status = ?) 
+                    OR (interval IS NOT NULL) 
+                )
+                ORDER BY next_run_time 
+                LIMIT 1""",
+                (
+                    self.STATUS_RUNNING,
+                    self.STATUS_WAITING,
+                ),
             )
             result = cursor.fetchone()
             return dict(result) if result else None
@@ -270,7 +387,7 @@ class TaskScheduler:
         """启动任务调度器"""
         if self._scheduler_thread and self._scheduler_thread.is_alive():
             return
-
+        self._renew_all_tasks()
         self._scheduler_thread = threading.Thread(
             target=self._scheduler_loop, daemon=True
         )

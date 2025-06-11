@@ -181,7 +181,7 @@ class Speaker:
             return False
         speech_synthesis_result = tts_result_future.get()
         if (
-            speech_synthesis_result.reason
+            speech_synthesis_result.reason  # type: ignore
             == speechsdk.ResultReason.SynthesizingAudioCompleted
         ):
             logger.info(f"\nSpeech synthesized for text [{text_to_speak}]")
@@ -193,8 +193,8 @@ class Speaker:
                 audio_data_stream.save_to_wav_file(file_name)
                 return True
             return True
-        elif speech_synthesis_result.reason == speechsdk.ResultReason.Canceled:
-            cancellation_details = speech_synthesis_result.cancellation_details
+        elif speech_synthesis_result.reason == speechsdk.ResultReason.Canceled:  # type: ignore
+            cancellation_details = speech_synthesis_result.cancellation_details  # type: ignore
             logger.info(f"\nSpeech synthesis canceled: {cancellation_details.reason}")
             if cancellation_details.reason == speechsdk.CancellationReason.Error:
                 if cancellation_details.error_details:
@@ -206,7 +206,7 @@ class Speaker:
                     )
         else:
             logger.error(
-                f"\nspeech_synthesis_result.reason: {speech_synthesis_result.reason}"
+                f"\nspeech_synthesis_result.reason: {speech_synthesis_result.reason}"  # type: ignore
             )
         return False
 
