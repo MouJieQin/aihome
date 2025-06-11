@@ -223,11 +223,17 @@ class Speaker:
         else:
             return 0.8
 
+    def _set_volume_imple(self, channel, volume: float, diff_allowed: float = 0.1):
+        """Set the volume of a channel if it differs by more than the specified amount."""
+        cur_volume = channel.get_volume()
+        if abs(cur_volume - volume) > diff_allowed:
+            channel.set_volume(volume)
+
     def _set_volume_based_on_time(self):
         """Set the volume based on the current time."""
         volume = self._get_volume_based_on_time()
-        self.audio_channel_assistant_synthesizer.set_volume(volume)
-        self.audio_channel_system_prompt.set_volume(volume)
+        self._set_volume_imple(self.audio_channel_assistant_synthesizer, volume)
+        self._set_volume_imple(self.audio_channel_system_prompt, volume)
 
     def speak_text(self, text: str):
         """Speak the given text in real-time."""
