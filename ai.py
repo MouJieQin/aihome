@@ -406,7 +406,7 @@ class AI_Server:
                                 "type": "int",
                                 "description": "目标温度，单位为摄氏度",
                                 "is_necessary": False,
-                                "default": 25,
+                                "default": 26,
                                 "range": "[8,30]",
                             },
                             "total_sample": {

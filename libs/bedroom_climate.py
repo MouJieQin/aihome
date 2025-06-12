@@ -54,6 +54,9 @@ class ClimateBedroom(HomeAssistantDevice):
         self.entity_id_quiet_mode = self.entity_ids["switch_quiet_mode"]
         self.entity_id_panel_light = self.entity_ids["switch_panel_light"]
 
+    def _call_service(self, domain: str, service: str, data: Dict[str, Any]) -> None:
+        super()._call_service_with_pause(domain, service, data)
+
     def fast_cool_mode(self, temperature: int = 25) -> None:
         """
         Activates the fast cool mode for the bedroom climate device.
