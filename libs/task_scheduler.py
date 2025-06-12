@@ -91,7 +91,7 @@ class TaskScheduler:
         now = datetime.datetime.now()
         if cur_next_run_time > now:
             return cur_next_run_time_str
-        time_diff = cur_next_run_time - now
+        time_diff = now - cur_next_run_time
         seconds_diff = time_diff.total_seconds()
         days, hours, minutes, seconds = TaskScheduler._str_to_interval(interval_str)
         seconds_interval = TaskScheduler._interval_to_seconds(
@@ -265,21 +265,30 @@ class TaskScheduler:
                         )
             conn.commit()
 
+    def _get_next_run_time_str(self, cur_next_run_str: str, interval_str: str) -> str:
+        """计算下一次运行时间"""
+        cur_next_run_time = self._str_to_datetime(cur_next_run_str)
+        days, hours, minutes, seconds = self._str_to_interval(interval_str)
+        total_seconds = self._interval_to_seconds(days, hours, minutes, seconds)
+        next_run_str = self._datetime_to_str(
+            cur_next_run_time + datetime.timedelta(seconds=total_seconds)
+        )
+        return next_run_str
+
     def _task_status_hanlder(self, exception_flag: bool, task_id: int) -> None:
         # 更新任务状态
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            now_str = self._now_str()
-            cursor.execute("SELECT interval FROM tasks WHERE id = ?", (task_id,))
-            interval_str = cursor.fetchone()[0]
-
+            cursor.execute(
+                "SELECT next_run_time, interval FROM tasks WHERE id = ?", (task_id,)
+            )
+            task = cursor.fetchone()
+            if not task:
+                return
+            cur_next_run_str, interval_str = task
             if interval_str:
-                days, hours, minutes, seconds = self._str_to_interval(interval_str)
-                total_seconds = self._interval_to_seconds(days, hours, minutes, seconds)
-
-                next_run_str = self._datetime_to_str(
-                    self._str_to_datetime(now_str)
-                    + datetime.timedelta(seconds=total_seconds)
+                next_run_str = self._get_next_run_time_str(
+                    cur_next_run_str, interval_str
                 )
                 task_status = (
                     self.STATUS_WAITING if not exception_flag else self.STATUS_FAILED
