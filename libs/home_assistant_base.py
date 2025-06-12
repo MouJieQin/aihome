@@ -1,7 +1,6 @@
 from homeassistant_api import Client
 from typing import Dict, Optional, Any
 from libs.log_config import logger
-import time
 
 
 class HomeAssistantDevice:
@@ -38,24 +37,6 @@ class HomeAssistantDevice:
             logger.info(res)
         except Exception as e:
             logger.exception(e)
-
-    def _call_service_with_pause(
-        self, domain: str, service: str, data: Dict[str, Any], pause: float = 0.1
-    ) -> None:
-        """
-        Calls a Home Assistant service with a pause.
-        Args:
-            domain (str): The domain of the service (e.g., 'climate', 'switch').
-            service (str): The name of the service (e.g., 'turn_on', 'set_temperature').
-            data (Dict[str, Any]): The data to pass to the service.
-            pause (float): The pause duration in seconds after the service call.
-        """
-        self._call_service(domain, service, data)
-        if pause > 0:
-            logger.info(
-                f"Pausing for {pause} seconds after calling service {domain}.{service}"
-            )
-            time.sleep(pause)
 
     def _turn_on(self, entity_id: str, domain: str = "switch") -> None:
         """Turns on the device."""

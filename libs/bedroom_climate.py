@@ -6,6 +6,7 @@ such as turning the climate device on/off, switching modes, and setting temperat
 
 from typing import Dict, Any
 from libs.home_assistant_base import HomeAssistantDevice
+from time import sleep
 
 
 class ClimateBedroom(HomeAssistantDevice):
@@ -55,7 +56,15 @@ class ClimateBedroom(HomeAssistantDevice):
         self.entity_id_panel_light = self.entity_ids["switch_panel_light"]
 
     def _call_service(self, domain: str, service: str, data: Dict[str, Any]) -> None:
-        super()._call_service_with_pause(domain, service, data, pause=0.5)
+        """
+        Calls a Home Assistant service with a pause between calls.
+        Args:
+            domain (str): The domain of the service (e.g., 'climate').
+            service (str): The name of the service (e.g., 'set_temperature').
+            data (Dict[str, Any]): The data to pass to the service.
+        """
+        super()._call_service(domain, service, data)
+        sleep(0.5)  # Pause for 0.5 seconds to avoid overwhelming the API
 
     def fast_cool_mode(self, temperature: int = 25) -> None:
         """
