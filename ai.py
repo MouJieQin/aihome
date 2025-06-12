@@ -857,7 +857,7 @@ class AI_Server:
                 print("CH2O: {} ppb    {} mg/m3".format(result["ppb"], result["mgm3"]))
                 if result["mgm3"] > 0.08:
                     self.speaker.play_receive_response()
-                    self.speaker.speak_text(
+                    self.speaker.speak_warning(
                         "警告！当前室内甲醛浓度为{}mg/m3，建议您开启门窗通风。".format(
                             result["mgm3"]
                         )

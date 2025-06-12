@@ -680,6 +680,15 @@ Websocket_manager *websocket_manager;
 uint8_t Sensor_HC_SR501_pin = 26;
 bool led_state = 0;
 const uint8_t led_pin = 2;
+unsigned long lastRestartTime = 0;
+const unsigned long RESTART_INTERVAL = 24 * 60 * 60 * 1000; // 24小时，单位毫秒
+
+void restartESP32()
+{
+  Serial.println("Restarting ESP32 after 24 hours...");
+  delay(1000); // 给串口打印时间
+  ESP.restart();
+}
 
 void setup()
 {
@@ -702,6 +711,9 @@ void setup()
   Serial.begin(115200);
   Serial.println("Starting ESP32 Sensor Node...");
 #endif
+
+  // 初始化重启计时器
+  lastRestartTime = millis();
 
   // Create singleton instance
   websocket_manager = Websocket_manager::getInstance(ssid, password, "/ws", 80,
@@ -739,6 +751,13 @@ void loop()
       // 如果重新连接失败，添加一些延迟避免CPU占用过高
       delay(5000);
     }
+  }
+
+  // 检查是否需要重启ESP32 (每24小时)
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastRestartTime >= RESTART_INTERVAL)
+  {
+    restartESP32();
   }
 
   // Add some non-blocking delay to allow the system time to handle other tasks

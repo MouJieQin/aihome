@@ -242,6 +242,11 @@ class Speaker:
             result = self.real_time_speech_synthesizer.speak_text_async(text)
             return self._handle_tts_result(result, text)
 
+    def speak_warning(self, text: str):
+        """Speak the given warning text in real-time."""
+        logger.warning(f"{text}")
+        self.speak_text(text)
+
     def start_speaking_text(self, text: str):
         """Start speaking the given text in real-time."""
         with self.lock:
