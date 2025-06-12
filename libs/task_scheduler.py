@@ -341,7 +341,8 @@ class TaskScheduler:
             logger.exception(f"执行任务时出错: {e}")
             exception_flag_outer = True
         finally:
-            self._task_status_hanlder(exception_flag_outer, task_id)
+            if exception_flag_outer:
+                self._task_status_hanlder(exception_flag_outer, task_id)
 
     def _get_next_task(self) -> Optional[Dict[str, Any]]:
         """获取下一个要执行的任务"""
