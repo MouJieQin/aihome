@@ -160,6 +160,7 @@ class AI_Server:
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
         self.speaker = Speaker(self.configure)
         self.recognizer = Recognizer(self.configure, self._recognized_callback)
+        self._pause_ch2o_monitor_seconds = 0
 
     def _init_keyword_recognizers(self):
         """Initialize keyword recognizers."""
@@ -510,6 +511,19 @@ class AI_Server:
                     },
                 }
             },
+            "甲醛监测": {
+                "暂停监测": {
+                    "function": self.set_pause_ch2o_monitor_seconds,
+                    "args": {
+                        "seconds": {
+                            "type": "int",
+                            "is_necessary": True,
+                            "description": "暂停甲醛监测的时间，单位为秒。",
+                            "range": "[0, 28800]",
+                        }
+                    },
+                }
+            },
             "其它": {
                 "function": self._handle_others,
                 "args": {
@@ -844,12 +858,30 @@ class AI_Server:
                 if result["mgm3"] > 0.08:
                     self.speaker.play_receive_response()
                     self.speaker.speak_text(
-                        "警告！当前室内甲醛浓度为{}mg/m3，建议您立即开窗通风。".format(
+                        "警告！当前室内甲醛浓度为{}mg/m3，建议您开启门窗通风。".format(
                             result["mgm3"]
                         )
                     )
                     await asyncio.sleep(180)
+                    await self._pause_ch2o_monitor()
             await asyncio.sleep(61)
+            await self._pause_ch2o_monitor()
+
+    async def _pause_ch2o_monitor(self):
+        """Pause the CH2O monitor."""
+        if self._pause_ch2o_monitor_seconds <= 0:
+            return
+        logger.info(f"CH2O监测已暂停，暂停时间为{self._pause_ch2o_monitor_seconds}秒")
+        check_interval = 10.0  # 最大检查间隔为1秒
+        while self._pause_ch2o_monitor_seconds > 0:
+            await asyncio.sleep(check_interval)
+            self._pause_ch2o_monitor_seconds -= check_interval
+        logger.info("CH2O监测已恢复")
+
+    def set_pause_ch2o_monitor_seconds(self, seconds: int):
+        """Set the pause duration for CH2O monitoring."""
+        self._pause_ch2o_monitor_seconds = seconds
+        logger.info(f"设置CH2O监测暂停时间为{seconds}秒")
 
     def sync_task(self, stop_event: asyncio.Event):
         """A sample synchronous task running in a separate thread."""

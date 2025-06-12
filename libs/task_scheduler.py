@@ -307,6 +307,8 @@ class TaskScheduler:
                     (task_status, task_id),
                 )
             conn.commit()
+        # 触发重新加载，确保调度器能立即响应任务状态变更
+        self._trigger_reload()
 
     def _execute_task(self, task_id: int, args_json: str) -> None:
         """执行指定任务"""
