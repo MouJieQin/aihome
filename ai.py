@@ -5,6 +5,7 @@ import pyaudio
 import struct
 import asyncio
 import json
+import time
 import threading
 import os
 from typing import Dict, Callable, Optional, Tuple, Any
@@ -38,6 +39,13 @@ class AI_Server:
                 return str(o)
 
     def __init__(self, configure_path: str):
+        self.response_user = None
+        self.callback_to_response_yes: Optional[Callable] = None
+        self.callback_to_response_no: Optional[Callable] = None
+
+        self.is_activated = False
+        self.is_in_silent_mode = False
+
         self._load_configuration(configure_path)
         self._init_vm_manager()
         self._init_porcupine()
@@ -45,13 +53,6 @@ class AI_Server:
         self._init_keyword_recognizers()
         self._init_ai_assistant()
         self._init_task_scheduler()
-
-        self.response_user = None
-        self.callback_to_response_yes: Optional[Callable] = None
-        self.callback_to_response_no: Optional[Callable] = None
-
-        self.is_activated = False
-        self.is_in_silent_mode = False
 
     def _load_configuration(self, configure_path: str):
         """Load configuration from the given file path."""
@@ -121,19 +122,18 @@ class AI_Server:
         def run_ai_awake():
             """Run the wake word detection loop."""
             while True:
-                if self.porcupine is None:
-                    return
-                pcm = self.audio_stream.read(
-                    self.porcupine.frame_length, exception_on_overflow=False
-                )
-                pcm = struct.unpack_from("h" * self.porcupine.frame_length, pcm)
-                result = self.porcupine.process(pcm)
-                if result >= 0:
-                    logger.info(f"检测到唤醒词: あすな")
-                    if self.is_in_silent_mode:
-                        logger.info("当前处于静默模式，唤醒词被忽略。")
-                        continue
-                    else:
+                if self.is_in_silent_mode:
+                    time.sleep(3)
+                else:
+                    if self.porcupine is None:
+                        return
+                    pcm = self.audio_stream.read(
+                        self.porcupine.frame_length, exception_on_overflow=False
+                    )
+                    pcm = struct.unpack_from("h" * self.porcupine.frame_length, pcm)
+                    result = self.porcupine.process(pcm)
+                    if result >= 0:
+                        logger.info(f"检测到唤醒词: あすな")
                         if not self.is_activated:
                             self.activate_keyword_recognizers()
                         else:
@@ -169,16 +169,20 @@ class AI_Server:
 
     def _init_keyword_recognizers(self):
         """Initialize keyword recognizers."""
-        self.independent_keyword_list = [
+        self.response_keyword_list = [
             "response_no",
             "response_yes",
+        ]
+        self.independent_keyword_list = [
+            *self.response_keyword_list,
             "exit_silent_mode",
+            "enter_silent_mode",
         ]
         self.keyword_recognizers = self._create_keyword_recognizers()
         self._setup_keyword_recognizers()
 
     def _recognized_callback(self, cur_recognized_text: str):
-        """Callback function for recognized keywords."""
+        """Callback function for recognized words."""
         self.recognizer.stop_recognizer()
         if len(cur_recognized_text) > 1:
             self.stop_keyword_recognizers()
@@ -670,41 +674,56 @@ class AI_Server:
         }
 
     def _enter_silent_mode(self):
-        logger.info("Enter silent mode.")
-        # self._close_porcupine()
-        self.is_in_silent_mode = True
-        self.activate_keyword_recognizer("exit_silent_mode")
-        self.speaker.speak_text("已进入静默模式，唤醒词被禁用。")
-        self.recognizer.stop_recognizer_sync()
-        self.stop_keyword_recognizers()
+        """Enter silent mode where wake words are disabled."""
+        try:
+            logger.info("Enter silent mode.")
+            self.is_in_silent_mode = True
+            # self.speaker.speak_text("已启动静默，唤醒词被禁用。")
+            self.stop_keyword_recognizers()
+            self.recognizer.stop_recognizer_sync()
+            self.activate_keyword_recognizer("exit_silent_mode")
+        except Exception as e:
+            logger.error(f"Error entering silent mode: {e}")
+            self.speaker.speak_text("进入静默模式失败，请稍后再试。")
+            self.is_in_silent_mode = False
+            # self.activate_keyword_recognizers()
 
     def _exit_silent_mode(self):
-        logger.info("Exit silent mode.")
-        # self._init_porcupine()
-        self.is_in_silent_mode = False
-        self.stop_keyword_recognizer("exit_silent_mode")
-        self.speaker.speak_text("已退出静默模式，唤醒词已启用。")
-        # self.activate_keyword_recognizers()
+        """Exit silent mode where wake words are enabled again."""
+        try:
+            logger.info("Exit silent mode.")
+            self.is_in_silent_mode = False
+            # self.stop_keyword_recognizer("exit_silent_mode")
+            # self.speaker.speak_text("已结束静默，唤醒词已启用。")
+            # self.activate_keyword_recognizers()
+        except Exception as e:
+            logger.error(f"Error exiting silent mode: {e}")
+            self.speaker.speak_text("退出静默模式失败，请稍后再试。")
 
     def _call_callback(self, callback: Optional[Callable]):
         """Call the callback function if it's not None."""
         if callback:
             callback()
 
+    def _setup_keyword_recognizer(self, keyword: str):
+        """Set up keyword recognizers with models and callbacks."""
+        items = self.keyword_recognizers[keyword]
+        items["model"] = speechsdk.KeywordRecognitionModel(items["model_file"])
+        items["recognizer"] = speechsdk.KeywordRecognizer()
+        items["recognized_keyword_cb"] = self._recognized_keyword_cb(
+            items["keyword"],
+            items["recognizer"],
+            items["model"],
+            items["callback_recognized"],
+        )
+        items["recognizer"].recognized.connect(items["recognized_keyword_cb"])
+        items["canceled_keyword_cb"] = self._canceled_keyword_cb(items["keyword"])
+        items["recognizer"].canceled.connect(items["canceled_keyword_cb"])
+
     def _setup_keyword_recognizers(self):
         """Set up keyword recognizers with models and callbacks."""
-        for key, items in self.keyword_recognizers.items():
-            items["model"] = speechsdk.KeywordRecognitionModel(items["model_file"])
-            items["recognizer"] = speechsdk.KeywordRecognizer()
-            items["recognized_keyword_cb"] = self._recognized_keyword_cb(
-                items["keyword"],
-                items["recognizer"],
-                items["model"],
-                items["callback_recognized"],
-            )
-            items["recognizer"].recognized.connect(items["recognized_keyword_cb"])
-            items["canceled_keyword_cb"] = self._canceled_keyword_cb(items["keyword"])
-            items["recognizer"].canceled.connect(items["canceled_keyword_cb"])
+        for key in self.keyword_recognizers.keys():
+            self._setup_keyword_recognizer(key)
 
     def activate_keyword_recognizers(self):
         """Activate all keyword recognizers except keep-alive ones."""
@@ -728,7 +747,7 @@ class AI_Server:
 
     def activate_response_keyword_recognizers(self):
         """Activate response-related keyword recognizers."""
-        for key in self.independent_keyword_list:
+        for key in self.response_keyword_list:
             item = self.keyword_recognizers[key]
             item["recognizer"].recognize_once_async(item["model"])
         self._reset_response_time_counter()
@@ -743,7 +762,9 @@ class AI_Server:
     def stop_keyword_recognizer(self, keyword: str):
         """Stop specific keyword recognizers or all."""
         if keyword in self.keyword_recognizers:
-            self.keyword_recognizers[keyword]["recognizer"].stop_recognition_async()
+            self.keyword_recognizers[keyword][
+                "recognizer"
+            ].stop_recognition_async().get()
         else:
             logger.warning(f"Keyword recognizer for '{keyword}' not found.")
 
@@ -772,8 +793,8 @@ class AI_Server:
     def _response_time_counter(self, value):
         setattr(self.__class__, "response_time_counter", value)
 
-    def _reset_response_time_counter(self):
-        self._response_time_counter = self.RESPONSE_TIMEOUT
+    def _reset_response_time_counter(self, val: int = RESPONSE_TIMEOUT):
+        self._response_time_counter = val
 
     def set_response_value(self, val):
         """Set the user response value."""
@@ -784,9 +805,17 @@ class AI_Server:
         """Create a callback for canceled keyword recognition."""
 
         def canceled_keyword_cb(evt):
-            result = evt.result
-            if result.reason == speechsdk.ResultReason.Canceled:
-                logger.info(f"{keyword} CANCELED: {result.cancellation_details.reason}")
+            logger.warning(f"Canceled keyword: {keyword}, event: {evt}")
+            try:
+                result = evt.result
+                if result.reason == speechsdk.ResultReason.Canceled:
+                    logger.info(
+                        f"{keyword} CANCELED: {result.cancellation_details.reason}"
+                    )
+                else:
+                    logger.error(f"{keyword} CANCELED: {result.reason} - {result.text}")
+            except Exception as e:
+                logger.error(f"Error in canceled keyword callback: {e}")
 
         return canceled_keyword_cb
 
@@ -800,16 +829,25 @@ class AI_Server:
         """Create a callback for recognized keyword."""
 
         def recognized_keyword_cb(self: AI_Server, evt):
-            result = evt.result
-            if result.reason == speechsdk.ResultReason.RecognizedKeyword:
-                if len(keyword) < self.recognizer.get_max_len_recogized_words():
-                    return
-                self.recognizer.stop_recognizer()
-                logger.info("RECOGNIZED KEYWORD: {}".format(result.text))
-                self = AI_Server.__new__(AI_Server)
-                self._reset_response_time_counter()
-                callback()
-                recognizer.recognize_once_async(keyword_model)
+            logger.warning(f"Recognized keyword: {keyword}, event: {evt}")
+            try:
+                result = evt.result
+                if result.reason == speechsdk.ResultReason.RecognizedKeyword:
+                    logger.info("RECOGNIZED KEYWORD: {}".format(result.text))
+                    if len(keyword) < self.recognizer.get_max_len_recogized_words():
+                        return
+                    self.recognizer.stop_recognizer()
+                    self_ = AI_Server.__new__(AI_Server)
+                    self_._reset_response_time_counter()
+                    callback()
+                    if keyword not in self.independent_keyword_list:
+                        recognizer.recognize_once_async(keyword_model)
+                else:
+                    logger.error(
+                        f"{keyword} RECOGNIZED: {result.reason} - {result.text}"
+                    )
+            except Exception as e:
+                logger.error(f"Error in recognized keyword callback: {e}")
 
         return lambda evt: recognized_keyword_cb(self, evt)
 
