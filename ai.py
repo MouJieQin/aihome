@@ -211,12 +211,18 @@ class AI_Server:
 
     def _ai_assistant_response_callback_imple(self, commands: Dict, commands_: Dict):
         """Handle AI assistant response."""
-        for key, items in commands.items():
-            if key != "あすな":
-                if "args" in items.keys():
-                    commands_[key]["function"](**items["args"])
-                else:
-                    self._ai_assistant_response_callback_imple(items, commands_[key])
+        try:
+            for key, items in commands.items():
+                if key != "あすな":
+                    if "args" in items.keys():
+                        commands_[key]["function"](**items["args"])
+                    else:
+                        self._ai_assistant_response_callback_imple(
+                            items, commands_[key]
+                        )
+        except Exception as e:
+            logger.error(f"Error handling AI assistant response: {e}")
+            self.speaker.speak_text("执行指令时发生错误，请检查指令是否正确。")
 
     def _task_scheduler_callback(self, args: Dict):
         """Callback function for task scheduler."""
