@@ -51,6 +51,7 @@ class AI_Server:
         self.callback_to_response_no: Optional[Callable] = None
 
         self.is_activated = False
+        self.is_in_silent_mode = False
 
     def _load_configuration(self, configure_path: str):
         """Load configuration from the given file path."""
@@ -129,11 +130,15 @@ class AI_Server:
                 result = self.porcupine.process(pcm)
                 if result >= 0:
                     logger.info(f"检测到唤醒词: あすな")
-                    if not self.is_activated:
-                        self.activate_keyword_recognizers()
+                    if self.is_in_silent_mode:
+                        logger.info("当前处于静默模式，唤醒词被忽略。")
+                        continue
                     else:
-                        self._reset_response_time_counter()
-                        self.speaker.play_start_record()
+                        if not self.is_activated:
+                            self.activate_keyword_recognizers()
+                        else:
+                            self._reset_response_time_counter()
+                            self.speaker.play_start_record()
 
         thread = threading.Thread(target=run_ai_awake)
         thread.daemon = True
@@ -164,7 +169,11 @@ class AI_Server:
 
     def _init_keyword_recognizers(self):
         """Initialize keyword recognizers."""
-        self.independent_keyword_list = ["response_no", "response_yes"]
+        self.independent_keyword_list = [
+            "response_no",
+            "response_yes",
+            "exit_silent_mode",
+        ]
         self.keyword_recognizers = self._create_keyword_recognizers()
         self._setup_keyword_recognizers()
 
@@ -524,6 +533,12 @@ class AI_Server:
                     },
                 }
             },
+            "进入静默模式": {
+                "function": self._enter_silent_mode,
+                "description": "进入系统静默模式，在该模式下，「あすな」不会响应任何指令，也不会播放任何语音。",
+                "hint": "由于语音输入的影响，用户的输入可能是寂寞模式",
+                "args": {},
+            },
             "其它": {
                 "function": self._handle_others,
                 "args": {
@@ -628,6 +643,16 @@ class AI_Server:
                 "model_file": "./voices/models/turn-off-fan.table",
                 "callback_recognized": self.light_bedroom.turn_off_fan,
             },
+            "enter_silent_mode": {
+                "keyword": "进入静默模式",
+                "model_file": "./voices/models/enter-silent-mode.table",
+                "callback_recognized": self._enter_silent_mode,
+            },
+            "exit_silent_mode": {
+                "keyword": "退出静默模式",
+                "model_file": "./voices/models/exit-silent-mode.table",
+                "callback_recognized": self._exit_silent_mode,
+            },
             "response_no": {
                 "keyword": "不用了",
                 "model_file": "./voices/models/response-no.table",
@@ -646,14 +671,20 @@ class AI_Server:
 
     def _enter_silent_mode(self):
         logger.info("Enter silent mode.")
-        self._close_porcupine()
+        # self._close_porcupine()
+        self.is_in_silent_mode = True
+        self.activate_keyword_recognizer("exit_silent_mode")
+        self.speaker.speak_text("已进入静默模式，唤醒词被禁用。")
         self.recognizer.stop_recognizer_sync()
         self.stop_keyword_recognizers()
 
     def _exit_silent_mode(self):
         logger.info("Exit silent mode.")
-        self._init_porcupine()
-        self.activate_keyword_recognizers()
+        # self._init_porcupine()
+        self.is_in_silent_mode = False
+        self.stop_keyword_recognizer("exit_silent_mode")
+        self.speaker.speak_text("已退出静默模式，唤醒词已启用。")
+        # self.activate_keyword_recognizers()
 
     def _call_callback(self, callback: Optional[Callable]):
         """Call the callback function if it's not None."""
@@ -686,6 +717,15 @@ class AI_Server:
         self._reset_response_time_counter()
         self.is_activated = True
 
+    def activate_keyword_recognizer(self, keyword: str):
+        """Activate a specific keyword recognizer."""
+        if keyword in self.keyword_recognizers:
+            items = self.keyword_recognizers[keyword]
+            items["recognizer"].recognize_once_async(items["model"])
+            logger.info(f"Activated keyword recognizer for '{keyword}'.")
+        else:
+            logger.warning(f"Keyword recognizer for '{keyword}' not found.")
+
     def activate_response_keyword_recognizers(self):
         """Activate response-related keyword recognizers."""
         for key in self.independent_keyword_list:
@@ -699,6 +739,13 @@ class AI_Server:
         for key, items in self.keyword_recognizers.items():
             if key not in self.independent_keyword_list:
                 items["recognizer"].stop_recognition_async().get()
+
+    def stop_keyword_recognizer(self, keyword: str):
+        """Stop specific keyword recognizers or all."""
+        if keyword in self.keyword_recognizers:
+            self.keyword_recognizers[keyword]["recognizer"].stop_recognition_async()
+        else:
+            logger.warning(f"Keyword recognizer for '{keyword}' not found.")
 
     async def response_timer_demon(self):
         """Stop non-keep-alive keyword recognizers after timeout."""
