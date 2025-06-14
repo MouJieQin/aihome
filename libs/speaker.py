@@ -237,8 +237,11 @@ class Speaker:
 
     def speak_text(self, text: str):
         """Speak the given text in real-time."""
+        print(f"Speaking: {text}")
         with self.lock:
+            print("set volume based on time")
             self._set_volume_based_on_time()
+            print("speak text")
             result = self.real_time_speech_synthesizer.speak_text_async(text)
             return self._handle_tts_result(result, text)
 

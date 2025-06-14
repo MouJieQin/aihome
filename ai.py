@@ -175,11 +175,24 @@ class AI_Server:
         ]
         self.independent_keyword_list = [
             *self.response_keyword_list,
-            "exit_silent_mode",
-            "enter_silent_mode",
         ]
         self.keyword_recognizers = self._create_keyword_recognizers()
         self._setup_keyword_recognizers()
+        self._init_silent_mode_recognizer()
+
+    def _init_silent_mode_recognizer(self):
+        """Initialize the silent mode recognizer."""
+        self.silent_mode_recognizer = speechsdk.KeywordRecognizer()
+        self.silent_mode_on_model = speechsdk.KeywordRecognitionModel(
+            "./voices/models/enter-silent-mode.table"
+        )
+        self.silent_mode_off_model = speechsdk.KeywordRecognitionModel(
+            "./voices/models/exit-silent-mode.table"
+        )
+        self.silent_mode_recognizer.canceled.connect(
+            lambda evt: logger.debug(f"Silent mode recognizer canceled: {evt}")
+        )
+        self.silent_mode_recognizer.recognized.connect(self._create_silent_mode_bk())
 
     def _recognized_callback(self, cur_recognized_text: str):
         """Callback function for recognized words."""
@@ -653,16 +666,6 @@ class AI_Server:
                 "model_file": "./voices/models/turn-off-fan.table",
                 "callback_recognized": self.light_bedroom.turn_off_fan,
             },
-            "enter_silent_mode": {
-                "keyword": "进入静默模式",
-                "model_file": "./voices/models/enter-silent-mode.table",
-                "callback_recognized": self._enter_silent_mode,
-            },
-            "exit_silent_mode": {
-                "keyword": "退出静默模式",
-                "model_file": "./voices/models/exit-silent-mode.table",
-                "callback_recognized": self._exit_silent_mode,
-            },
             "response_no": {
                 "keyword": "不用了",
                 "model_file": "./voices/models/response-no.table",
@@ -679,29 +682,50 @@ class AI_Server:
             },
         }
 
+    def _create_silent_mode_bk(self) -> Callable:
+        """Create a callback function for silent mode activation."""
+
+        def callback(evt):
+            """Handle the event when silent mode is activated or deactivated."""
+            if evt.result.reason == speechsdk.ResultReason.RecognizedKeyword:
+                keyword = evt.result.text
+                if keyword == "进入静默模式":
+                    self._enter_silent_mode()
+                elif keyword == "退出静默模式":
+                    self._exit_silent_mode()
+            else:
+                logger.debug(f"Keyword not recognized: {evt.result.reason}")
+
+        return callback
+
+    def _start_recognize_silent_mode_on(self):
+        """Start recognizing the silent mode activation keyword."""
+        self.silent_mode_recognizer.recognize_once_async(self.silent_mode_on_model)
+
+    def _stop_recognize_silent_mode_on(self):
+        """Stop recognizing the silent mode activation keyword."""
+        self.silent_mode_recognizer.stop_recognition_async()
+
     def _enter_silent_mode(self):
         """Enter silent mode where wake words are disabled."""
         try:
             logger.info("Enter silent mode.")
             self.is_in_silent_mode = True
-            # self.speaker.speak_text("已启动静默，唤醒词被禁用。")
-            self.stop_keyword_recognizers()
             self.recognizer.stop_recognizer_sync()
-            self.activate_keyword_recognizer("exit_silent_mode")
+            self.stop_keyword_recognizers()
+            self.speaker.speak_text("已启动静默，唤醒词被禁用。")
+            self.silent_mode_recognizer.recognize_once_async(self.silent_mode_off_model)
         except Exception as e:
             logger.error(f"Error entering silent mode: {e}")
             self.speaker.speak_text("进入静默模式失败，请稍后再试。")
             self.is_in_silent_mode = False
-            # self.activate_keyword_recognizers()
 
     def _exit_silent_mode(self):
         """Exit silent mode where wake words are enabled again."""
         try:
             logger.info("Exit silent mode.")
             self.is_in_silent_mode = False
-            # self.stop_keyword_recognizer("exit_silent_mode")
-            # self.speaker.speak_text("已结束静默，唤醒词已启用。")
-            # self.activate_keyword_recognizers()
+            self.speaker.speak_text("已结束静默，唤醒词已启用。")
         except Exception as e:
             logger.error(f"Error exiting silent mode: {e}")
             self.speaker.speak_text("退出静默模式失败，请稍后再试。")
@@ -736,6 +760,7 @@ class AI_Server:
         self.speaker.play_start_record()
         self.recognizer.stop_recognizer_sync()
         self.recognizer.start_recognizer()
+        self._start_recognize_silent_mode_on()
         for key, items in self.keyword_recognizers.items():
             if key not in self.independent_keyword_list:
                 items["recognizer"].recognize_once_async(items["model"])
@@ -761,6 +786,8 @@ class AI_Server:
 
     def stop_keyword_recognizers(self):
         """Stop keyword recognizers."""
+        if not self.is_in_silent_mode:
+            self._stop_recognize_silent_mode_on()
         for key, items in self.keyword_recognizers.items():
             if key not in self.independent_keyword_list:
                 items["recognizer"].stop_recognition_async().get()
@@ -811,17 +838,11 @@ class AI_Server:
         """Create a callback for canceled keyword recognition."""
 
         def canceled_keyword_cb(evt):
-            logger.warning(f"Canceled keyword: {keyword}, event: {evt}")
-            try:
-                result = evt.result
-                if result.reason == speechsdk.ResultReason.Canceled:
-                    logger.info(
-                        f"{keyword} CANCELED: {result.cancellation_details.reason}"
-                    )
-                else:
-                    logger.error(f"{keyword} CANCELED: {result.reason} - {result.text}")
-            except Exception as e:
-                logger.error(f"Error in canceled keyword callback: {e}")
+            result = evt.result
+            if result.reason == speechsdk.ResultReason.Canceled:
+                logger.info(f"{keyword} CANCELED: {result.cancellation_details.reason}")
+            else:
+                logger.error(f"{keyword} CANCELED: {result.reason} - {result.text}")
 
         return canceled_keyword_cb
 
@@ -835,19 +856,18 @@ class AI_Server:
         """Create a callback for recognized keyword."""
 
         def recognized_keyword_cb(self: AI_Server, evt):
-            logger.warning(f"Recognized keyword: {keyword}, event: {evt}")
             try:
                 result = evt.result
                 if result.reason == speechsdk.ResultReason.RecognizedKeyword:
-                    logger.info("RECOGNIZED KEYWORD: {}".format(result.text))
+                    # Avoid keywords being recognized in real-time recognition
                     if len(keyword) < self.recognizer.get_max_len_recogized_words():
                         return
                     self.recognizer.stop_recognizer()
                     self_ = AI_Server.__new__(AI_Server)
-                    self_._reset_response_time_counter()
+                    self_._reset_response_time_counter(0)
                     callback()
-                    if keyword not in self.independent_keyword_list:
-                        recognizer.recognize_once_async(keyword_model)
+                    # if keyword not in self.independent_keyword_list:
+                    #     recognizer.recognize_once_async(keyword_model)
                 else:
                     logger.error(
                         f"{keyword} RECOGNIZED: {result.reason} - {result.text}"
