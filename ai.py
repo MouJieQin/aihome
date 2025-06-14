@@ -182,17 +182,22 @@ class AI_Server:
 
     def _init_silent_mode_recognizer(self):
         """Initialize the silent mode recognizer."""
-        self.silent_mode_recognizer = speechsdk.KeywordRecognizer()
         self.silent_mode_on_model = speechsdk.KeywordRecognitionModel(
             "./voices/models/enter-silent-mode.table"
         )
         self.silent_mode_off_model = speechsdk.KeywordRecognitionModel(
             "./voices/models/exit-silent-mode.table"
         )
-        self.silent_mode_recognizer.canceled.connect(
+        self.silent_mode_recognizer = self._create_silent_mode_recognizer()
+
+    def _create_silent_mode_recognizer(self) -> speechsdk.KeywordRecognizer:
+        """Create a silent mode recognizer."""
+        silent_mode_recognizer = speechsdk.KeywordRecognizer()
+        silent_mode_recognizer.canceled.connect(
             lambda evt: logger.debug(f"Silent mode recognizer canceled: {evt}")
         )
-        self.silent_mode_recognizer.recognized.connect(self._create_silent_mode_bk())
+        silent_mode_recognizer.recognized.connect(self._create_silent_mode_bk())
+        return silent_mode_recognizer
 
     def _recognized_callback(self, cur_recognized_text: str):
         """Callback function for recognized words."""
@@ -556,9 +561,9 @@ class AI_Server:
                     },
                 }
             },
-            "进入静默模式": {
+            "开启静默": {
                 "function": self._enter_silent_mode,
-                "description": "进入系统静默模式，在该模式下，「あすな」不会响应任何指令，也不会播放任何语音。",
+                "description": "进入系统静默模式，在该模式下，无法唤醒「あすな」。",
                 "hint": "由于语音输入的影响，用户的输入可能是寂寞模式",
                 "args": {},
             },
@@ -700,6 +705,7 @@ class AI_Server:
 
     def _start_recognize_silent_mode_on(self):
         """Start recognizing the silent mode activation keyword."""
+        self.silent_mode_recognizer = self._create_silent_mode_recognizer()
         self.silent_mode_recognizer.recognize_once_async(self.silent_mode_on_model)
 
     def _stop_recognize_silent_mode_on(self):
@@ -709,11 +715,13 @@ class AI_Server:
     def _enter_silent_mode(self):
         """Enter silent mode where wake words are disabled."""
         try:
-            logger.info("Enter silent mode.")
-            self.is_in_silent_mode = True
             self.recognizer.stop_recognizer_sync()
-            self.stop_keyword_recognizers()
+            self.speaker.play_receive_response()
+            logger.info("Enter silent mode.")
             self.speaker.speak_text("已启动静默，唤醒词被禁用。")
+            self.is_in_silent_mode = True
+            self.stop_keyword_recognizers()
+            self.silent_mode_recognizer = self._create_silent_mode_recognizer()
             self.silent_mode_recognizer.recognize_once_async(self.silent_mode_off_model)
         except Exception as e:
             logger.error(f"Error entering silent mode: {e}")
@@ -723,9 +731,10 @@ class AI_Server:
     def _exit_silent_mode(self):
         """Exit silent mode where wake words are enabled again."""
         try:
+            self.speaker.play_receive_response()
             logger.info("Exit silent mode.")
-            self.is_in_silent_mode = False
             self.speaker.speak_text("已结束静默，唤醒词已启用。")
+            self.is_in_silent_mode = False
         except Exception as e:
             logger.error(f"Error exiting silent mode: {e}")
             self.speaker.speak_text("退出静默模式失败，请稍后再试。")
