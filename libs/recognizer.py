@@ -47,17 +47,18 @@ class Recognizer:
 
     def start_recognizer(self):
         self.is_stopping_recognizer = False
-        self.auto_speech_recognizer.start_continuous_recognition()
+        # self.auto_speech_recognizer.start_continuous_recognition()
+        self.auto_speech_recognizer.recognize_once_async()
         self.max_len_recogized_words = 0
 
     def stop_recognizer(self):
         self.is_stopping_recognizer = True
-        self.auto_speech_recognizer.stop_continuous_recognition_async()
+        # self.auto_speech_recognizer.stop_continuous_recognition_async()
         self.max_len_recogized_words = 0
 
     def stop_recognizer_sync(self):
         self.is_stopping_recognizer = True
-        self.auto_speech_recognizer.stop_continuous_recognition()
+        # self.auto_speech_recognizer.stop_continuous_recognition()
         self.max_len_recogized_words = 0
 
     def _azure_stt_input_auto_recognizing(self, evt):
