@@ -1,13 +1,8 @@
 import azure.cognitiveservices.speech as speechsdk
 from concurrent.futures import ThreadPoolExecutor
-import pvporcupine
-import pyaudio
-import struct
 import asyncio
 import json
-import time
 import threading
-import os
 from typing import Dict, Callable, Optional, Tuple, Any
 from libs.bedroom_light import LightBedroom
 from libs.bedroom_climate import ClimateBedroom
@@ -19,8 +14,10 @@ from libs.recognizer import Recognizer
 from libs.ai_assistant import AIassistant
 from libs.homeassistant_vm_manager import VirtualBoxController
 from libs.task_scheduler import TaskScheduler
+from libs.porcupine_manager import PorcupineManager
 from libs.log_config import logger
 from datetime import datetime
+
 
 class AIserver:
     RESPONSE_TIMEOUT = 10
@@ -36,16 +33,13 @@ class AIserver:
                 return str(o)
 
     def __init__(self, configure_path: str):
+        self._load_configuration(configure_path)
         self.response_user = None
         self.callback_to_response_yes: Optional[Callable] = None
         self.callback_to_response_no: Optional[Callable] = None
 
-        self.is_activated = False
-        self.is_in_silent_mode = False
-
-        self._load_configuration(configure_path)
+        self._init_porcupine_manager()
         self._init_vm_manager()
-        self._init_porcupine()
         self._init_devices()
         self._init_keyword_recognizers()
         self._init_ai_assistant()
@@ -55,6 +49,15 @@ class AIserver:
         """Load configuration from the given file path."""
         with open(configure_path, mode="r", encoding="utf-8") as f:
             self.configure = json.load(f)
+
+    def _init_porcupine_manager(self):
+        """Initialize the Porcupine manager for wake word detection."""
+        self.porcupine_manager = PorcupineManager(
+            self.configure,
+            self._awake_callback,
+            self._enter_silent_mode,
+            self._exit_silent_mode,
+        )
 
     def _init_vm_manager(self):
         """Initialize the VirtualBox manager and start the VM."""
@@ -75,81 +78,6 @@ class AIserver:
         supported_commands_ = self._create_supported_function_for_ai_assistant()
         supported_commands_str = json.dumps(supported_commands_, ensure_ascii=False)
         self.ai_assistant = AIassistant(self.configure, supported_commands_str)
-
-    def _init_porcupine(self):
-        """Initialize Porcupine for wake word detection."""
-        config_porcupine = self.configure["porcupine"]
-        config_microphone = self.configure["microphone"]
-        self.porcupine = pvporcupine.create(
-            access_key=config_porcupine["access_key"],
-            model_path=config_porcupine["model_path"],
-            keyword_paths=[config_porcupine["keyword_paths"]],
-        )
-        self.pa = pyaudio.PyAudio()
-        input_device_name = config_microphone["ai_assistant"]["input_device_name"]
-        input_device_index = self._get_input_device_index_by_name(input_device_name)
-        if input_device_index is None:
-            logger.error(f"未找到名为 {input_device_name} 的输入设备")
-            exit(1)
-            return
-        self.audio_stream = self.pa.open(
-            rate=self.porcupine.sample_rate,
-            channels=1,
-            format=pyaudio.paInt16,
-            input=True,
-            input_device_index=input_device_index,
-            frames_per_buffer=self.porcupine.frame_length,
-        )
-        self._start_ai_awake_thread()
-
-    def _get_input_device_index_by_name(self, device_name: str) -> Optional[int]:
-        """Get the input device index by its name."""
-        for i in range(self.pa.get_device_count()):
-            device_info = self.pa.get_device_info_by_index(i)
-            if (
-                device_info["name"] == device_name
-                and device_info["maxInputChannels"] != 0
-            ):
-                return i
-        return None
-
-    def _start_ai_awake_thread(self) -> threading.Thread:
-        """Start the thread for wake word detection."""
-
-        def run_ai_awake():
-            """Run the wake word detection loop."""
-            while True:
-                if self.is_in_silent_mode:
-                    time.sleep(3)
-                else:
-                    if self.porcupine is None:
-                        return
-                    pcm = self.audio_stream.read(
-                        self.porcupine.frame_length, exception_on_overflow=False
-                    )
-                    pcm = struct.unpack_from("h" * self.porcupine.frame_length, pcm)
-                    result = self.porcupine.process(pcm)
-                    if result >= 0:
-                        logger.info(f"检测到唤醒词: あすな")
-                        if not self.is_activated:
-                            self.activate_keyword_recognizers()
-                        else:
-                            self._reset_response_time_counter()
-                            self.speaker.play_start_record()
-
-        thread = threading.Thread(target=run_ai_awake)
-        thread.daemon = True
-        thread.start()
-        return thread
-
-    def _close_porcupine(self):
-        """Close Porcupine resources."""
-        if self.pa is not None:
-            self.pa.terminate()
-        if self.audio_stream is not None:
-            self.audio_stream.close()
-        if self.porcupine is not None:
-            self.porcupine.delete()
 
     def _init_devices(self):
         """Initialize all smart devices."""
@@ -175,26 +103,6 @@ class AIserver:
         ]
         self.keyword_recognizers = self._create_keyword_recognizers()
         self._setup_keyword_recognizers()
-        self._init_silent_mode_recognizer()
-
-    def _init_silent_mode_recognizer(self):
-        """Initialize the silent mode recognizer."""
-        self.silent_mode_on_model = speechsdk.KeywordRecognitionModel(
-            "./voices/models/enter-silent-mode.table"
-        )
-        self.silent_mode_off_model = speechsdk.KeywordRecognitionModel(
-            "./voices/models/exit-silent-mode.table"
-        )
-        self.silent_mode_recognizer = self._create_silent_mode_recognizer()
-
-    def _create_silent_mode_recognizer(self) -> speechsdk.KeywordRecognizer:
-        """Create a silent mode recognizer."""
-        silent_mode_recognizer = speechsdk.KeywordRecognizer()
-        silent_mode_recognizer.canceled.connect(
-            lambda evt: logger.debug(f"Silent mode recognizer canceled: {evt}")
-        )
-        silent_mode_recognizer.recognized.connect(self._create_silent_mode_bk())
-        return silent_mode_recognizer
 
     def _recognized_callback(self, cur_recognized_text: str):
         """Callback function for recognized words."""
@@ -684,57 +592,27 @@ class AIserver:
             },
         }
 
-    def _create_silent_mode_bk(self) -> Callable:
-        """Create a callback function for silent mode activation."""
-
-        def callback(evt):
-            """Handle the event when silent mode is activated or deactivated."""
-            if evt.result.reason == speechsdk.ResultReason.RecognizedKeyword:
-                keyword = evt.result.text
-                if keyword == "进入静默模式":
-                    self._enter_silent_mode()
-                elif keyword == "退出静默模式":
-                    self._exit_silent_mode()
-            else:
-                logger.debug(f"Keyword not recognized: {evt.result.reason}")
-
-        return callback
-
-    def _start_recognize_silent_mode_on(self):
-        """Start recognizing the silent mode activation keyword."""
-        self.silent_mode_recognizer = self._create_silent_mode_recognizer()
-        self.silent_mode_recognizer.recognize_once_async(self.silent_mode_on_model)
-
-    def _stop_recognize_silent_mode_on(self):
-        """Stop recognizing the silent mode activation keyword."""
-        self.silent_mode_recognizer.stop_recognition_async()
+    def _awake_callback(self):
+        if not self.porcupine_manager.is_awaked():
+            self.activate_keyword_recognizers()
+        else:
+            self._reset_response_time_counter()
+            self.speaker.play_start_record()
 
     def _enter_silent_mode(self):
         """Enter silent mode where wake words are disabled."""
-        try:
-            self.recognizer.stop_recognizer_sync()
-            self.speaker.play_receive_response()
-            logger.info("Enter silent mode.")
-            self.speaker.speak_text("已启动静默，唤醒词被禁用。")
-            self.is_in_silent_mode = True
-            self.stop_keyword_recognizers()
-            self.silent_mode_recognizer = self._create_silent_mode_recognizer()
-            self.silent_mode_recognizer.recognize_once_async(self.silent_mode_off_model)
-        except Exception as e:
-            logger.error(f"Error entering silent mode: {e}")
-            self.speaker.speak_text("进入静默模式失败，请稍后再试。")
-            self.is_in_silent_mode = False
+        self.recognizer.stop_recognizer_sync()
+        self.speaker.play_receive_response()
+        logger.info("Enter silent mode.")
+        self.speaker.speak_text("已启动静默，唤醒词被禁用。")
+        self.stop_keyword_recognizers()
+        self.porcupine_manager.start_recognize_silent_mode_off()
 
     def _exit_silent_mode(self):
         """Exit silent mode where wake words are enabled again."""
-        try:
-            self.speaker.play_receive_response()
-            logger.info("Exit silent mode.")
-            self.speaker.speak_text("已结束静默，唤醒词已启用。")
-            self.is_in_silent_mode = False
-        except Exception as e:
-            logger.error(f"Error exiting silent mode: {e}")
-            self.speaker.speak_text("退出静默模式失败，请稍后再试。")
+        self.speaker.play_receive_response()
+        logger.info("Exit silent mode.")
+        self.speaker.speak_text("已结束静默，唤醒词已启用。")
 
     def _call_callback(self, callback: Optional[Callable]):
         """Call the callback function if it's not None."""
@@ -766,12 +644,12 @@ class AIserver:
         self.speaker.play_start_record()
         self.recognizer.stop_recognizer_sync()
         self.recognizer.start_recognizer()
-        self._start_recognize_silent_mode_on()
+        self.porcupine_manager.start_recognize_silent_mode_on()
         for key, items in self.keyword_recognizers.items():
             if key not in self.independent_keyword_list:
                 items["recognizer"].recognize_once_async(items["model"])
         self._reset_response_time_counter()
-        self.is_activated = True
+        self.porcupine_manager.set_awake(True)
 
     def activate_keyword_recognizer(self, keyword: str):
         """Activate a specific keyword recognizer."""
@@ -792,8 +670,8 @@ class AIserver:
 
     def stop_keyword_recognizers(self):
         """Stop keyword recognizers."""
-        if not self.is_in_silent_mode:
-            self._stop_recognize_silent_mode_on()
+        if not self.porcupine_manager.is_in_silent_mode():
+            self.porcupine_manager.stop_recognize_silent_mode_on()
         for key, items in self.keyword_recognizers.items():
             if key not in self.independent_keyword_list:
                 items["recognizer"].stop_recognition_async().get()
@@ -821,7 +699,7 @@ class AIserver:
                 self.stop_keyword_recognizers()
                 self.recognizer.stop_recognizer()
                 self.speaker.play_end_record()
-                self.is_activated = False
+                self.porcupine_manager.set_awake(False)
             await asyncio.sleep(self.RESPONSE_INTERVAL)
 
     @property
@@ -1033,7 +911,7 @@ class AIserver:
             self.stop_keyword_recognizers()
             self.recognizer.stop_recognizer()
             self.task_scheduler.stop()
-            self._close_porcupine()
+            self.porcupine_manager.close_porcupine()
             stop_event.set()
             executor.shutdown()
             self.speaker.close()
