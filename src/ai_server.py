@@ -22,10 +22,7 @@ from libs.task_scheduler import TaskScheduler
 from libs.log_config import logger
 from datetime import datetime
 
-os.chdir(os.path.dirname(__file__))
-
-
-class AI_Server:
+class AIserver:
     RESPONSE_TIMEOUT = 10
     RESPONSE_INTERVAL = 1
 
@@ -817,7 +814,7 @@ class AI_Server:
                 while self._response_time_counter > 0:
                     self._response_time_counter -= self.RESPONSE_INTERVAL
                     logger.debug(
-                        "AI_Server.response_time_counter:",
+                        "AIserver.response_time_counter:",
                         self._response_time_counter,
                     )
                     await asyncio.sleep(self.RESPONSE_INTERVAL)
@@ -864,7 +861,7 @@ class AI_Server:
     ) -> Callable:
         """Create a callback for recognized keyword."""
 
-        def recognized_keyword_cb(self: AI_Server, evt):
+        def recognized_keyword_cb(self: AIserver, evt):
             try:
                 result = evt.result
                 if result.reason == speechsdk.ResultReason.RecognizedKeyword:
@@ -872,7 +869,7 @@ class AI_Server:
                     if len(keyword) < self.recognizer.get_max_len_recogized_words():
                         return
                     self.recognizer.stop_recognizer()
-                    self_ = AI_Server.__new__(AI_Server)
+                    self_ = AIserver.__new__(AIserver)
                     self_._reset_response_time_counter(0)
                     callback()
                     # if keyword not in self.independent_keyword_list:
@@ -1041,15 +1038,3 @@ class AI_Server:
             executor.shutdown()
             self.speaker.close()
             logger.info("The program has been terminated.")
-
-
-AI = AI_Server(configure_path="./configure.json")
-
-if __name__ == "__main__":
-    logger.info(AI.get_states_of_all_devices())
-    try:
-        asyncio.run(AI.main())
-    except KeyboardInterrupt:
-        logger.info("程序已停止")
-    except Exception as e:
-        logger.exception(f"发生错误: {e}")
