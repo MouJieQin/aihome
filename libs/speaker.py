@@ -110,18 +110,41 @@ class PygameAudioOutputStream(speechsdk.audio.PushAudioOutputStreamCallback):
                 logger.exception(f"Error processing remaining audio: {e}")
 
 
-class Speaker:
+class SingletonMeta(type):
+    """
+    Metaclass for implementing the Singleton pattern.
+    """
+
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
+class Speaker(metaclass=SingletonMeta):
     def __init__(self, configure: Dict):
+
+        # Ensure initialization only happens once
+        if not hasattr(self, "_initialized"):
+            if configure is None:
+                raise ValueError("config must be provided on first initialization")
+            self.configure = configure
+            self._init()
+            self._initialized = True
+
+    def _init(self):
         self.audio_files = {
             "start_record": "./voices/BubbleAppear.aiff.wav",
             "end_record": "./voices/BubbleDisappear.aiff.wav",
             "send_message": "./voices/SentMessage.aiff.wav",
             "receive_response": "./voices/Blow.aiff.wav",
         }
-        self.azure_config = configure["azure"]
+        self.azure_config = self.configure["azure"]
         self.azure_key = self.azure_config["key"]
         self.azure_region = self.azure_config["region"]
-        self.speaker_config = configure["speaker"]
+        self.speaker_config = self.configure["speaker"]
         # Cache loaded audio files
         self.audio_cache = {}
         self._init_mixer()

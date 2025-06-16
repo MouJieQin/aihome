@@ -56,6 +56,7 @@ class AIserverDevices:
 
     def _init_devices(self):
         """Initialize all smart devices."""
+        self.speaker = Speaker(self.configure)
         self.light_bedroom = LightBedroom(self.configure)
         self.climate_bedroom = ClimateBedroom(self.configure)
         self.elec_controller = ElecMeterController(self.configure)
@@ -63,7 +64,6 @@ class AIserverDevices:
         self.esp32_config = self.configure["esp32"]
         self.esp32_bedroom_config = self.esp32_config["bedroom"]
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
-        self.speaker = Speaker(self.configure)
         self.recognizer = Recognizer(self.configure, self._recognized_callback)
         self._pause_ch2o_monitor_seconds = 0
 

@@ -1,5 +1,5 @@
 from homeassistant_api import Client
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Callable
 from libs.log_config import logger
 from libs.homeassistant_vm_manager import VirtualBoxController
 from libs.speaker import Speaker
@@ -43,12 +43,11 @@ class HomeAssistantDevice:
         except Exception as e:
             if not self.ha_vm_manager.is_vm_running():
                 self.speaker.speak_text("Home Assistant虚拟机未运行，正在尝试启动。")
-                if not self.ha_vm_manager.start_ha_vm_until_ready():
+                if self.ha_vm_manager.start_ha_vm_until_ready():
+                    self._call_service(domain, service, data)
+                else:
                     self.speaker.speak_text("Home Assistant虚拟机启动失败，请检查配置")
                     logger.error("Home Assistant虚拟机启动失败，请检查配置")
-                    return
-                else:
-                    self._call_service(domain, service, data)
             else:
                 logger.error(f"Failed to call service {domain}.{service}: {e}")
                 self.speaker.speak_text(f"调用服务失败: {domain}.{service}")
@@ -105,5 +104,13 @@ class HomeAssistantDevice:
                 logger.error(f"Entity {entity_id} not found.")
                 return None  # type: ignore
         except Exception as e:
-            logger.exception(e)
+            logger.error(f"Failed to get the state of {entity_id}: {e}")
+            if not self.ha_vm_manager.is_vm_running():
+                self.speaker.speak_text("Home Assistant虚拟机未运行，正在尝试启动。")
+                if self.ha_vm_manager.start_ha_vm_until_ready():
+                    return self._get_entity_state(entity_id)
+                else:
+                    self.speaker.speak_text("Home Assistant虚拟机启动失败，请检查配置")
+                    logger.error("Home Assistant虚拟机启动失败，请检查配置")
+                    return None  # type: ignore
             return None  # type: ignore
