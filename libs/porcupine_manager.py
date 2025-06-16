@@ -146,7 +146,7 @@ class PorcupineManager:
         """Create a silent mode recognizer."""
         silent_mode_recognizer = speechsdk.KeywordRecognizer()
         silent_mode_recognizer.canceled.connect(
-            lambda evt: logger.debug(f"Silent mode recognizer canceled: {evt}")
+            lambda evt: logger.info(f"Silent mode recognizer canceled: {evt}")
         )
         silent_mode_recognizer.recognized.connect(self._create_silent_mode_bk())
         return silent_mode_recognizer

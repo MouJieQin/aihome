@@ -1,6 +1,9 @@
 from homeassistant_api import Client
 from typing import Dict, Optional, Any
 from libs.log_config import logger
+from libs.homeassistant_vm_manager import VirtualBoxController
+from libs.speaker import Speaker
+import time
 
 
 class HomeAssistantDevice:
@@ -21,6 +24,8 @@ class HomeAssistantDevice:
         api_url = f"http://{ha_config['host']}:{ha_config['port']}/api"
         self.client = Client(api_url, ha_config["long_lived_access_token"])
         self.entity_ids = device_config["entity_id"]
+        self.ha_vm_manager = VirtualBoxController(config["virtualbox"]["ha_vm_uuid"])
+        self.speaker = Speaker(config)
 
     def _call_service(self, domain: str, service: str, data: Dict[str, Any]) -> None:
         """
@@ -36,7 +41,17 @@ class HomeAssistantDevice:
             res = self.client.trigger_service(domain, service, **data)
             logger.info(res)
         except Exception as e:
-            logger.exception(e)
+            if not self.ha_vm_manager.is_vm_running():
+                self.speaker.speak_text("Home Assistant虚拟机未运行，正在尝试启动。")
+                if not self.ha_vm_manager.start_ha_vm_until_ready():
+                    self.speaker.speak_text("Home Assistant虚拟机启动失败，请检查配置")
+                    logger.error("Home Assistant虚拟机启动失败，请检查配置")
+                    return
+                else:
+                    self._call_service(domain, service, data)
+            else:
+                logger.error(f"Failed to call service {domain}.{service}: {e}")
+                self.speaker.speak_text(f"调用服务失败: {domain}.{service}")
 
     def _turn_on(self, entity_id: str, domain: str = "switch") -> None:
         """Turns on the device."""

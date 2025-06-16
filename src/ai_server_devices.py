@@ -43,12 +43,16 @@ class AIserverDevices:
         self.configure = configure
         self.callback_to_response_yes: Optional[Callable] = None
         self.callback_to_response_no: Optional[Callable] = None
+        self._init_vm_manager()
         self._init_devices()
-        self._init_vm_manager()
-        self._init_vm_manager()
         self._init_porcupine_manager()
         self._init_task_scheduler()
         self._init_keyword_recognizers()
+
+    def _init_vm_manager(self):
+        """Initialize the VirtualBox manager and start the VM."""
+        self.ha_vm_manager = VirtualBoxController(self.configure)
+        self.ha_vm_manager.start_vm()
 
     def _init_devices(self):
         """Initialize all smart devices."""
@@ -62,12 +66,6 @@ class AIserverDevices:
         self.speaker = Speaker(self.configure)
         self.recognizer = Recognizer(self.configure, self._recognized_callback)
         self._pause_ch2o_monitor_seconds = 0
-
-    def _init_vm_manager(self):
-        """Initialize the VirtualBox manager and start the VM."""
-        ha_vm_uuid = self.configure["virtualbox"]["ha_vm_uuid"]
-        self.ha_vm_manager = VirtualBoxController(ha_vm_uuid)
-        self.ha_vm_manager.start_vm()
 
     async def response_timer_demon(self):
         """Stop non-keep-alive keyword recognizers after timeout."""

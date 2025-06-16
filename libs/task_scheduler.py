@@ -253,10 +253,11 @@ class TaskScheduler:
                     new_next_run_str = self._get_next_run_time(
                         next_run_str, interval_str
                     )
-                    cursor.execute(
-                        "UPDATE tasks SET next_run_time =? WHERE id =?",
-                        (new_next_run_str, task_id),
-                    )
+                    if next_run_str < new_next_run_str:
+                        cursor.execute(
+                            "UPDATE tasks SET next_run_time =? WHERE id =?",
+                            (new_next_run_str, task_id),
+                        )
                 else:
                     if status == self.STATUS_WAITING and next_run_str < self._now_str():
                         cursor.execute(

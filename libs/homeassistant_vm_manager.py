@@ -1,10 +1,25 @@
 import subprocess
 import sys
 import time
+from homeassistant_api import Client
 from libs.log_config import logger
+from typing import Dict, Any, Optional
 
 
-class VirtualBoxController:
+class SingletonMeta(type):
+    """
+    Metaclass for implementing the Singleton pattern.
+    """
+
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
+class VirtualBoxController(metaclass=SingletonMeta):
     """
     A class for controlling a VirtualBox virtual machine.
 
@@ -12,14 +27,26 @@ class VirtualBoxController:
         vm_uuid (str): The UUID of the virtual machine.
     """
 
-    def __init__(self, vm_uuid):
+    def __init__(self, config: Optional[Dict[str, Any]]):
         """
         Initializes the VirtualBox controller with the given VM UUID.
 
         Args:
-            vm_uuid (str): The UUID of the virtual machine.
+            vm_uuid (str, optional): The UUID of the virtual machine.
         """
-        self.vm_uuid = vm_uuid
+        # Ensure initialization only happens once
+        if not hasattr(self, "_initialized"):
+            if config is None:
+                raise ValueError("config must be provided on first initialization")
+            self.config = config
+            self._init()
+            self._initialized = True
+
+    def _init(self):
+        self.vm_uuid = self.config["virtualbox"]["ha_vm_uuid"]
+        ha_config = self.config["home_assistant"]
+        api_url = f"http://{ha_config['host']}:{ha_config['port']}/api"
+        self.client = Client(api_url, ha_config["long_lived_access_token"])
 
     def _run_vboxmanage(self, command):
         """
@@ -81,6 +108,36 @@ class VirtualBoxController:
             ["VBoxManage", "startvm", self.vm_uuid, "--type", "headless"]
         )
         logger.info("The virtual machine has been started")
+
+    def check_ready(self) -> bool:
+        """
+        Check if the Home Assistant virtual machine is ready.
+
+        Returns:
+            bool: True if the VM is ready, False otherwise.
+        """
+        try:
+            self.client.get_entities()
+            return True
+        except Exception as e:
+            logger.warning(f"Check Home Assistant virtual machine ready failed: {e}")
+            return False
+
+    def start_ha_vm_until_ready(self, max_retries=5) -> bool:
+        """
+        Start the Home Assistant virtual machine and wait until it's ready.
+
+        Args:
+            max_retries (int, optional): Maximum number of retries. Defaults to 5.
+        """
+        self.start_vm()
+        for _ in range(max_retries):
+            if self.check_ready():
+                return True
+            time.sleep(3)
+        else:
+            logger.error("Check Home Assistant virtual machine ready timeout.")
+            return False
 
     def _wait_for_vm_to_stop(self, max_wait=30):
         """

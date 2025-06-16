@@ -6,7 +6,7 @@ import asyncio
 if __name__ == "__main__":
     os.chdir(os.path.dirname(__file__))
     AI = AIserver(configure_path="./configure.json")
-    logger.info(AI.get_states_of_all_devices())
+    # logger.info(AI.get_states_of_all_devices())
     try:
         asyncio.run(AI.main())
     except KeyboardInterrupt:
