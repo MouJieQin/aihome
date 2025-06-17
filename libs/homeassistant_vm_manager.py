@@ -38,7 +38,7 @@ class VirtualBoxController(metaclass=SingletonMeta):
         if not hasattr(self, "_initialized"):
             if config is None:
                 raise ValueError("config must be provided on first initialization")
-            self.config = config
+            self.config: Dict[str, Any] = config
             self._init()
             self._initialized = True
 
@@ -117,7 +117,9 @@ class VirtualBoxController(metaclass=SingletonMeta):
             bool: True if the VM is ready, False otherwise.
         """
         try:
-            self.client.get_entities()
+            for devices in self.config["smart_home_appliances"].values():
+                for id in devices["entity_id"].values():
+                    self.client.get_state(entity_id=id)
             return True
         except Exception as e:
             logger.warning(f"Check Home Assistant virtual machine ready failed: {e}")

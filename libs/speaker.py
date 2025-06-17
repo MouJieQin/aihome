@@ -237,11 +237,11 @@ class Speaker(metaclass=SingletonMeta):
         """Get the volume based on the current time."""
         current_time = time.localtime()
         hour = current_time.tm_hour
-        if hour < 8 or hour >= 21:
+        if hour < 8 or hour >= 23:
             return 0.3
         elif 8 <= hour < 12:
             return 0.8
-        elif 12 <= hour < 16:
+        elif 12 <= hour < 16 or 21 <= hour < 23:
             return 0.5
         else:
             return 0.8
