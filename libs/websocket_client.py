@@ -24,8 +24,9 @@ class MathUtils:
             float: The mean of the data.
         """
         n = len(data)
-        mean = sum(data) / n
-        return mean
+        if n == 0:
+            return 0
+        return sum(data) / n
 
     @staticmethod
     def variance(data):
@@ -38,11 +39,12 @@ class MathUtils:
         Returns:
             float: The variance of the data.
         """
+        if not data:
+            return 0
         mean = MathUtils.mean(data)
         n = len(data)
         deviations = [(x - mean) ** 2 for x in data]
-        variance = sum(deviations) / n
-        return variance
+        return sum(deviations) / n
 
     @staticmethod
     def stdev(data):
@@ -68,31 +70,47 @@ class Websocket_client_esp32:
         self.websocket = None
         self.resp_stack = {}
         self.record = {}
-        self.print_exception_flag = False
+        self.is_connected = False
+        self.is_disconnection_found_first = True
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 10
+        self.reconnect_delay = 1
+        self.max_reconnect_delay = 30
 
     async def connect(self) -> bool:
         """
-        Establish a WebSocket connection.
+        Establish a WebSocket connection with exponential backoff retry.
 
         Returns:
             bool: True if the connection is successful, False otherwise.
         """
-        try:
-            self.websocket = await websockets.connect(self.uri)
-            logger.info(f"WebSocket connection established: {self.uri}")
-            self.print_exception_flag = False
-            return True
-        except Exception as e:
-            if self.print_exception_flag:
-                logger.exception(f"WebSocket connection failed.")
-            else:
-                self.print_exception_flag = True
-                logger.exception(f"WebSocket connection failed: {e}")
-            return False
+        while self.reconnect_attempts < self.max_reconnect_attempts:
+            try:
+                self.websocket = await websockets.connect(self.uri)
+                self.is_connected = True
+                self.is_disconnection_found_first = True
+                self.reconnect_attempts = 0
+                self.reconnect_delay = 1
+                logger.info(f"WebSocket connection established: {self.uri}")
+                return True
+            except Exception as e:
+                self.reconnect_attempts += 1
+                self.is_connected = False
+                delay = min(
+                    self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)),
+                    self.max_reconnect_delay,
+                )
+                logger.error(
+                    f"WebSocket connection attempt {self.reconnect_attempts}/{self.max_reconnect_attempts} failed: {e}. Retrying in {delay:.1f}s"
+                )
+                self.is_disconnection_found_first = False
+                await asyncio.sleep(delay)
+        logger.critical(f"Max reconnect attempts reached. Cannot connect to {self.uri}")
+        return False
 
     async def _send_message(self, message) -> bool:
         """
-        Send a message to the server.
+        Send a message to the server. Automatically reconnect if disconnected.
 
         Args:
             message (str): The message to send.
@@ -100,26 +118,30 @@ class Websocket_client_esp32:
         Returns:
             bool: True if the message is sent successfully, False otherwise.
         """
-        if self.websocket:
-            try:
-                await self.websocket.send(message)
-                logger.debug(f"Sent message: {message}")
-                return True
-            except Exception as e:
-                logger.exception(f"Failed to send message: {e}")
-                return False
-        return False
+        if not self.is_connected:
+            if self.is_disconnection_found_first:
+                logger.error("WebSocket sender: WebSocket is not connected.")
+            return False
+        try:
+            await self.websocket.send(message)  # type: ignore
+            logger.debug(f"Sent message: {message}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send message: {e}")
+            return False
 
     async def receive_messages(self):
         """
-        Continuously receive messages from the server.
+        Continuously receive messages from the server with automatic reconnection.
         """
         while True:
-            if not self.websocket:
-                logger.error("WebSocket is not connected")
+            if not self.is_connected:
+                if self.is_disconnection_found_first:
+                    logger.warning("WebSocket receiver: Not connected.")
+                await asyncio.sleep(3)
             else:
                 try:
-                    async for message in self.websocket:
+                    async for message in self.websocket:  # type: ignore
                         logger.debug(f"Received message: {message}")
                         try:
                             mess = json.loads(message)
@@ -128,21 +150,26 @@ class Websocket_client_esp32:
                             logger.exception(f"Failed to parse message: {message}")
                 except websockets.exceptions.ConnectionClosedOK:
                     logger.info("WebSocket connection closed normally")
+                    self.is_connected = False
                 except websockets.exceptions.ConnectionClosedError as e:
-                    logger.exception(f"WebSocket connection closed unexpectedly: {e}")
-                    self.websocket = None
+                    logger.error(f"WebSocket connection closed unexpectedly: {e}")
+                    self.is_connected = False
                 except Exception as e:
                     logger.exception(f"Error receiving message: {e}")
-                finally:
-                    await self.close()
-            await asyncio.sleep(3)
+                    self.is_connected = False
 
     async def close(self):
         """
-        Close the WebSocket connection.
+        Close the WebSocket connection gracefully.
         """
         if self.websocket:
-            await self.websocket.close()
+            try:
+                await self.websocket.close()
+            except Exception as e:
+                logger.error(f"Error closing WebSocket: {e}")
+            finally:
+                self.websocket = None
+                self.is_connected = False
 
     @staticmethod
     def _get_now_timestamp() -> str:
@@ -175,11 +202,14 @@ class Websocket_client_esp32:
             "type": message_type,
         }
         txt_message = json.dumps(message, ensure_ascii=False)
+
         if not await self._send_message(txt_message):
+            logger.debug(f"Failed to send {message_type} request.")
             return None
+
         counter: float = 0
         while counter < timeout:
-            if message["id"] in self.resp_stack.keys():
+            if message["id"] in self.resp_stack:
                 mess = self.resp_stack.pop(message["id"])
                 if mess["from"] == "esp32_sensors" and mess["type"] == message_type:
                     if message_type == "ch2o" and mess["success"]:
@@ -196,6 +226,8 @@ class Websocket_client_esp32:
                         }
             await asyncio.sleep(poll_interval)
             counter += poll_interval
+
+        logger.warning(f"{message_type} request timed out after {timeout} seconds")
         return None
 
     async def get_ch2o(
@@ -230,35 +262,43 @@ class Websocket_client_esp32:
             "humidity_temperature", timeout, poll_interval
         )
 
-    async def get_statistc_temp_hum(self, total_simples: int = 10) -> Optional[Dict]:
+    async def get_statistc_temp_hum(self, total_samples: int = 10) -> Optional[Dict]:
         """
         Get statistical data for temperature and humidity.
 
         Args:
-            total_simples (int, optional): The number of samples to consider. Defaults to 10.
+            total_samples (int, optional): The number of samples to consider. Defaults to 10.
 
         Returns:
             Optional[Dict]: The statistical data for temperature and humidity if available, None otherwise.
         """
-        samples_tem = self.record["temperature"][-total_simples:]
-        samples_hum = self.record["humidity"][-total_simples:]
-        if not samples_tem:
+        if "temperature" not in self.record or "humidity" not in self.record:
+            logger.warning("No temperature or humidity records available")
             return None
-        else:
-            return {
-                "temperature": {
-                    "mean": MathUtils.mean(samples_tem),
-                    "stdev": MathUtils.stdev(samples_tem),
-                },
-                "humidity": {
-                    "mean": MathUtils.mean(samples_hum),
-                    "stdev": MathUtils.stdev(samples_hum),
-                },
-            }
+
+        samples_tem = self.record["temperature"][-total_samples:]
+        samples_hum = self.record["humidity"][-total_samples:]
+
+        if not samples_tem or not samples_hum:
+            logger.warning(
+                f"Not enough samples available. Need {total_samples}, have {len(samples_tem)} temperature and {len(samples_hum)} humidity samples"
+            )
+            return None
+
+        return {
+            "temperature": {
+                "mean": MathUtils.mean(samples_tem),
+                "stdev": MathUtils.stdev(samples_tem),
+            },
+            "humidity": {
+                "mean": MathUtils.mean(samples_hum),
+                "stdev": MathUtils.stdev(samples_hum),
+            },
+        }
 
     async def sample_tem_hum(self, sample_interval: int = 10):
         """
-        Continuously sample temperature and humidity data.
+        Continuously sample temperature and humidity data with error handling.
 
         Args:
             sample_interval (int, optional): The sampling interval in seconds. Defaults to 10.
@@ -266,17 +306,28 @@ class Websocket_client_esp32:
         self.record["timestamp"] = []
         self.record["temperature"] = []
         self.record["humidity"] = []
+
         while True:
-            result = await self.get_temperature_humidity()
-            if result:
-                if len(self.record["timestamp"]) >= 200:
-                    self.record["timestamp"] = self.record["timestamp"][-100:]
-                    self.record["temperature"] = self.record["temperature"][-100:]
-                    self.record["humidity"] = self.record["humidity"][-100:]
-                self.record["timestamp"].append(result["timestamp"])
-                self.record["temperature"].append(result["temperature"])
-                self.record["humidity"].append(result["humidity"])
             await asyncio.sleep(sample_interval)
+            try:
+                result = await self.get_temperature_humidity()
+                if result:
+                    if len(self.record["timestamp"]) >= 200:
+                        self.record["timestamp"] = self.record["timestamp"][-100:]
+                        self.record["temperature"] = self.record["temperature"][-100:]
+                        self.record["humidity"] = self.record["humidity"][-100:]
+
+                    self.record["timestamp"].append(result["timestamp"])
+                    self.record["temperature"].append(result["temperature"])
+                    self.record["humidity"].append(result["humidity"])
+                    logger.debug(
+                        f"Sampled temperature: {result['temperature']}°C, humidity: {result['humidity']}%"
+                    )
+                else:
+                    if self.is_disconnection_found_first:
+                        logger.warning("Failed to sample temperature and humidity data")
+            except Exception as e:
+                logger.exception(f"Error sampling temperature and humidity: {e}")
 
     async def heartbeat_task(self, interval=5):
         """
@@ -287,8 +338,16 @@ class Websocket_client_esp32:
         """
         message = {"message": "heartbeat"}
         heartbeat_mess = json.dumps(message, ensure_ascii=False)
+
         while True:
-            if not await self._send_message(heartbeat_mess):
-                while not await self.connect():
-                    await asyncio.sleep(interval)
+            try:
+                if not await self._send_message(heartbeat_mess):
+                    logger.warning("Heartbeat failed. Reconnecting...")
+                    while not await self.connect():
+                        self.reconnect_attempts = 0
+                else:
+                    logger.debug("Heartbeat sent successfully")
+            except Exception as e:
+                logger.exception(f"Error sending heartbeat: {e}")
+
             await asyncio.sleep(interval)
