@@ -162,9 +162,9 @@ class Speaker(metaclass=SingletonMeta):
         self.audio_channel_system_prompt = pygame.mixer.Channel(1)
 
         self.keep_alive_channel = pygame.mixer.Channel(2)
-        self.keep_alive_channel.set_volume(0.1)
+        self.keep_alive_channel.set_volume(0.01)
         self.silent_sound = mixer.Sound(self.audio_files["send_message"])
-        self.silent_sound.set_volume(0.1)
+        self.silent_sound.set_volume(0.01)
 
     def close(self):
         """Close the Pygame mixer."""

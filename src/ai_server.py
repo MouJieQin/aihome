@@ -408,7 +408,7 @@ class AIserver(AIserverDevices):
                             },
                             "others": {
                                 "name": "其它指令",
-                                "description": "其它与家电无关但可以做到的指令。",
+                                "description": "其它与家电无关但可以做到的指令，比如知识问答。",
                             },
                         },
                     }
