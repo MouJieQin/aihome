@@ -71,6 +71,14 @@ class AIassistant:
         self.messages.append({"role": "user", "content": content})
         return self.messages
 
+    def _create_message_for_auto(self, more_info: str) -> list:
+        content = f"""
+        {more_info}
+        """
+        logger.info(f"AI assistant input: {content}")
+        self.messages.append({"role": "user", "content": content})
+        return self.messages
+
     def _manage_history(self, user_input: str, response: Optional[str]):
         if not response:
             return
@@ -97,6 +105,21 @@ class AIassistant:
             )
             content = response.choices[0].message.content  # type: ignore
             self._manage_history(user_input, content)
+            return content
+        except Exception as e:
+            logger.exception(e)
+            return None
+
+    def auto_chat(self, more_info: str) -> Optional[str]:
+        try:
+            messages = self._create_message_for_auto(more_info)
+            response = self.client.chat.completions.create(
+                model=self.volcengine["model"], messages=messages, stream=False
+            )
+            content = response.choices[0].message.content  # type: ignore
+            self._manage_history(
+                "这是智能管家获取更多信息的回调输入，非用户输入。", content
+            )
             return content
         except Exception as e:
             logger.exception(e)

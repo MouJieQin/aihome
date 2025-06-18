@@ -162,9 +162,19 @@ class TaskScheduler:
         Returns:
             是否成功删除
         """
+        return self.delete_tasks([task_id])
+
+    def delete_tasks(self, task_ids: List[int]) -> bool:
+        """删除指定ID的任务
+
+        Returns:
+            是否成功删除
+        """
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            cursor.executemany(
+                "DELETE FROM tasks WHERE id = ?", ((task_id,) for task_id in task_ids)
+            )
             conn.commit()
             deleted = cursor.rowcount > 0
 
@@ -181,13 +191,27 @@ class TaskScheduler:
         Returns:
             是否成功更新
         """
-        if self._renew_task(task_id) == False:
-            return False
+        return self.activate_tasks([task_id], active)
+
+    def activate_tasks(self, task_ids: List[int], active: bool = True) -> bool:
+        """激活指定ID的任务
+
+        Args:
+            task_ids: 任务ID列表
+        Returns:
+            是否成功更新
+        """
+        for task_id in task_ids:
+            if self._renew_task(task_id) == False:
+                return False
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            cursor.execute(
+            cursor.executemany(
                 "UPDATE tasks SET is_active = ? WHERE id = ? AND status != ?",
-                (1 if active else 0, task_id, self.STATUS_COMPLETED),
+                (
+                    (1 if active else 0, task_id, self.STATUS_COMPLETED)
+                    for task_id in task_ids
+                ),
             )
             conn.commit()
             updated = cursor.rowcount > 0

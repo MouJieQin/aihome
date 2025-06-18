@@ -2,7 +2,7 @@ import azure.cognitiveservices.speech as speechsdk
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import json
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 from src.ai_server_devices import AIserverDevices
 from libs.ai_assistant import AIassistant
 from libs.log_config import logger
@@ -35,7 +35,7 @@ class AIserver(AIserverDevices):
             self._chat_with_ai_assistant(cur_recognized_text)
 
     def _chat_with_ai_assistant(self, user_input: str) -> Optional[str]:
-        """Chat with AI assistant and return the response."""
+        """Chat with AI assistant and perform the response."""
         logger.info(f"User input: {user_input}")
         self.speaker.play_send_message()
         response = self.ai_assistant.chat(user_input, self._json_states_of_all_devices)
@@ -44,6 +44,41 @@ class AIserver(AIserverDevices):
         if response:
             self._handle_ai_assistant_response(response)
         return response
+
+    def _auto_chat_with_ai_assistant_with_more_info(
+        self, more_info_want_to_know: list[str]
+    ):
+        """This function is called by ai assistant for more information.
+        Args:
+            more_info: A list of strings, each string is a piece of information the assistant want to know.
+        """
+        more_info = {}
+        for info in more_info_want_to_know:
+            more_info[info] = self._get_more_info(info)
+        input = json.dumps(more_info, ensure_ascii=False)
+        self.speaker.play_send_message()
+        response = self.ai_assistant.auto_chat(input)
+        logger.info(f"Assistant response: {response}")
+        self.speaker.play_receive_response()
+        if response:
+            self._handle_ai_assistant_response(response)
+        return response
+
+    def _get_more_info(
+        self, more_info_want_to_know: str
+    ) -> Union[Dict, list, str, None]:
+        """Get more information from the device.
+        Args:
+            more_info_want_to_know: A string, the information the assistant want to know.
+        Returns:
+            A string, the more information from the device.
+        """
+        if more_info_want_to_know == "all_schedular_tasks":
+            return self.task_scheduler.list_tasks()
+        elif more_info_want_to_know == "all_devices_states":
+            return self.get_json_states_of_all_devices()
+        else:
+            return None
 
     def _handle_ai_assistant_response(self, response: str):
         """Handle AI assistant response."""
@@ -89,6 +124,20 @@ class AIserver(AIserverDevices):
     def _create_supported_function(self) -> Dict:
         """Create a dictionary of supported functions."""
         return {
+            "获取更多信息": {
+                "function": self._auto_chat_with_ai_assistant_with_more_info,
+                "description": "当あすな需要获取更多的信息才能完成用户指令时，调用该函数会将该信息发送给あすな。",
+                "args": {
+                    "more_info_want_to_know": {
+                        "type": "list[str]",
+                        "is_necessary": True,
+                        "condidates": {
+                            "all_schedular_tasks": {"name": "所有定时任务"},
+                            "all_devices_states": {"name": "所有设备状态"},
+                        },
+                    }
+                },
+            },
             "吊扇": {
                 "风速": {
                     "function": self.light_bedroom.adjust_fan_speed_to_preset_value,
@@ -337,7 +386,7 @@ class AIserver(AIserverDevices):
                 }
             },
             "日程安排程序": {
-                "添加日程": {
+                "添加": {
                     "function": self._add_scheduler_task,
                     "args": {
                         "task_name": {
@@ -369,7 +418,35 @@ class AIserver(AIserverDevices):
                             },
                         },
                     },
-                }
+                },
+                "删除": {
+                    "function": self.task_scheduler.delete_tasks,
+                    "args": {
+                        "task_ids": {
+                            "type": "List[int]",
+                            "is_necessary": True,
+                            "description": "任务的ID列表。eg. [1, 2, 3]",
+                        }
+                    },
+                },
+                "暂停/恢复": {
+                    "function": self.task_scheduler.activate_tasks,
+                    "args": {
+                        "task_ids": {
+                            "type": "List[int]",
+                            "is_necessary": True,
+                            "description": "任务的ID列表。eg. [1, 2, 3]",
+                        },
+                        "active": {
+                            "type": "bool",
+                            "is_necessary": True,
+                            "condidates": {
+                                True: {"name": "恢复"},
+                                False: {"name": "暂停"},
+                            },
+                        },
+                    },
+                },
             },
             "甲醛监测": {
                 "暂停监测": {
