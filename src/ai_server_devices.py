@@ -332,6 +332,8 @@ class AIserverDevices:
     def acquire_json_states_of_all_devices_async(self):
         """Get states of all devices."""
 
+        self._json_states_of_all_devices = "{}"
+
         def set_json_states_of_all_devices():
             try:
                 self._json_states_of_all_devices = self.get_json_states_of_all_devices()

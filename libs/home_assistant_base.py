@@ -27,6 +27,16 @@ class HomeAssistantDevice:
         self.ha_vm_manager = VirtualBoxController(config["virtualbox"]["ha_vm_uuid"])
         self.speaker = Speaker(config)
 
+    def _call_service_imple(self, domain: str, service: str, data: Dict) -> bool:
+        try:
+            logger.info(f"Calling service {domain}.{service} with data: {data}")
+            res = self.client.trigger_service(domain, service, **data)
+            logger.info(res)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to call service {domain}.{service}: {e}")
+            return False
+
     def _call_service(self, domain: str, service: str, data: Dict[str, Any]) -> None:
         """
         Calls a Home Assistant service.
@@ -36,11 +46,7 @@ class HomeAssistantDevice:
             service (str): The name of the service (e.g., 'turn_on', 'set_temperature').
             data (Dict[str, Any]): The data to pass to the service.
         """
-        try:
-            logger.info(f"Calling service {domain}.{service} with data: {data}")
-            res = self.client.trigger_service(domain, service, **data)
-            logger.info(res)
-        except Exception as e:
+        if not self._call_service_imple(domain, service, data):
             if not self.ha_vm_manager.is_vm_running():
                 self.speaker.speak_text("Home Assistant未运行，正在尝试启动。")
                 if self.ha_vm_manager.start_ha_vm_until_ready():
@@ -49,7 +55,10 @@ class HomeAssistantDevice:
                     self.speaker.speak_text("Home Assistant启动失败，请检查配置")
                     logger.error("Home Assistant启动失败，请检查配置")
             else:
-                logger.error(f"Failed to call service {domain}.{service}: {e}")
+                for _ in range(3):
+                    time.sleep(5)
+                    if self._call_service_imple(domain, service, data):
+                        return
                 self.speaker.speak_text(f"调用服务失败: {domain}.{service}")
 
     def _turn_on(self, entity_id: str, domain: str = "switch") -> None:

@@ -4,6 +4,7 @@ import time
 from homeassistant_api import Client
 from libs.log_config import logger
 from typing import Dict, Any, Optional
+import threading
 
 
 class SingletonMeta(type):
@@ -47,6 +48,7 @@ class VirtualBoxController(metaclass=SingletonMeta):
         ha_config = self.config["home_assistant"]
         api_url = f"http://{ha_config['host']}:{ha_config['port']}/api"
         self.client = Client(api_url, ha_config["long_lived_access_token"])
+        self.lock = threading.Lock()
 
     def _run_vboxmanage(self, command):
         """
@@ -132,14 +134,15 @@ class VirtualBoxController(metaclass=SingletonMeta):
         Args:
             max_retries (int, optional): Maximum number of retries. Defaults to 5.
         """
-        self.start_vm()
-        for _ in range(max_retries):
-            if self.check_ready():
-                return True
-            time.sleep(3)
-        else:
-            logger.error("Check Home Assistant virtual machine ready timeout.")
-            return False
+        with self.lock:
+            self.start_vm()
+            for _ in range(max_retries):
+                if self.check_ready():
+                    return True
+                time.sleep(3)
+            else:
+                logger.error("Check Home Assistant virtual machine ready timeout.")
+                return False
 
     def _wait_for_vm_to_stop(self, max_wait=30):
         """
