@@ -38,7 +38,7 @@ class AIserver(AIserverDevices):
         """Chat with AI assistant and return the response."""
         logger.info(f"User input: {user_input}")
         self.speaker.play_send_message()
-        response = self.ai_assistant.chat(user_input, self.json_states_of_all_devices())
+        response = self.ai_assistant.chat(user_input, self._json_states_of_all_devices)
         logger.info(f"Assistant response: {response}")
         self.speaker.play_receive_response()
         if response:

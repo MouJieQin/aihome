@@ -66,6 +66,7 @@ class AIserverDevices:
         self.ws_client_esp32 = Websocket_client_esp32(self.esp32_bedroom_config["uri"])
         self.recognizer = Recognizer(self.configure, self._recognized_callback)
         self._pause_ch2o_monitor_seconds = 0
+        self._json_states_of_all_devices = "{}"
 
     async def response_timer_demon(self):
         """Stop non-keep-alive keyword recognizers after timeout."""
@@ -98,6 +99,7 @@ class AIserverDevices:
     def _awake_callback(self):
         if not self.porcupine_manager.is_awaked():
             self.activate_keyword_recognizers()
+            self.acquire_json_states_of_all_devices_async()
         else:
             self._reset_response_time_counter()
             self.speaker.play_start_record()
@@ -327,7 +329,19 @@ class AIserverDevices:
 
         return lambda evt: recognized_keyword_cb(self, evt)
 
-    def json_states_of_all_devices(self) -> str:
+    def acquire_json_states_of_all_devices_async(self):
+        """Get states of all devices."""
+
+        def set_json_states_of_all_devices():
+            try:
+                self._json_states_of_all_devices = self.get_json_states_of_all_devices()
+            except Exception as e:
+                logger.error(f"Error in acquiring json states of all devices: {e}")
+                self._json_states_of_all_devices = "{}"
+
+        threading.Thread(target=set_json_states_of_all_devices, daemon=True).start()
+
+    def get_json_states_of_all_devices(self) -> str:
         """Get states of all devices."""
         return json.dumps(
             self.get_states_of_all_devices(),
