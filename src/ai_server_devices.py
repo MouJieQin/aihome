@@ -189,16 +189,6 @@ class AIserverDevices:
                     "Reception Mode"
                 ),
             },
-            "turn_off_light": {
-                "keyword": "关灯",
-                "model_file": "./voices/models/turn-off-light.table",
-                "callback_recognized": self.light_bedroom.turn_off_light,
-            },
-            "turn_off_fan": {
-                "keyword": "关闭风扇",
-                "model_file": "./voices/models/turn-off-fan.table",
-                "callback_recognized": self.light_bedroom.turn_off_fan,
-            },
             "response_no": {
                 "keyword": "不用了",
                 "model_file": "./voices/models/response-no.table",

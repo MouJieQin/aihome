@@ -2,6 +2,7 @@ import azure.cognitiveservices.speech as speechsdk
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import json
+import threading
 from typing import Dict, Optional, Union
 from src.ai_server_devices import AIserverDevices
 from libs.ai_assistant import AIassistant
@@ -87,7 +88,11 @@ class AIserver(AIserverDevices):
 
     def _ai_assistant_response_callback(self, commands: Dict):
         """Callback function for AI assistant response."""
-        self._ai_assistant_response_callback_imple(commands, self.supported_commands)
+        threading.Thread(
+            target=self._ai_assistant_response_callback_imple,
+            args=(commands, self.supported_commands),
+            daemon=True,
+        ).start()
         self.speaker.start_speaking_text(commands["あすな"])
 
     def _ai_assistant_response_callback_imple(self, commands: Dict, commands_: Dict):
@@ -126,7 +131,7 @@ class AIserver(AIserverDevices):
         return {
             "获取更多信息": {
                 "function": self._auto_chat_with_ai_assistant_with_more_info,
-                "description": "当あすな需要获取更多的信息才能完成用户指令时，调用该函数会将该信息发送给あすな。",
+                "description": "当あすな需要获取更多的信息才能完成用户指令时，あすな可以主动调用该函数将该信息发送给あすな做进一步处理。",
                 "args": {
                     "more_info_want_to_know": {
                         "type": "list[str]",
