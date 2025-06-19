@@ -182,7 +182,7 @@ class Websocket_client_esp32:
         return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     async def _get_sensor_data(
-        self, message_type: str, timeout: float = 3, poll_interval: float = 0.1
+        self, message_type: str, timeout: float = 5, poll_interval: float = 0.1
     ) -> Optional[Dict]:
         """
         Get sensor data from the server.
@@ -296,7 +296,7 @@ class Websocket_client_esp32:
             },
         }
 
-    async def sample_tem_hum(self, sample_interval: int = 10):
+    async def sample_tem_hum(self, sample_interval: int = 17):
         """
         Continuously sample temperature and humidity data with error handling.
 

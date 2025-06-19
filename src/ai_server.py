@@ -87,8 +87,8 @@ class AIserver(AIserverDevices):
 
     def _ai_assistant_response_callback(self, commands: Dict):
         """Callback function for AI assistant response."""
-        self.speaker.start_speaking_text(commands["あすな"])
         self._ai_assistant_response_callback_imple(commands, self.supported_commands)
+        self.speaker.start_speaking_text(commands["あすな"])
 
     def _ai_assistant_response_callback_imple(self, commands: Dict, commands_: Dict):
         """Handle AI assistant response."""
@@ -137,6 +137,13 @@ class AIserver(AIserverDevices):
                         },
                     }
                 },
+            },
+            "homeassistant虚拟机": {
+                "关机": {
+                    "function": self.ha_vm_manager.save_vm_state,
+                    "description": "关闭homeassistant虚拟机",
+                    "args": {},
+                }
             },
             "吊扇": {
                 "风速": {

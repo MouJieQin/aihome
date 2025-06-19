@@ -103,6 +103,7 @@ class AIserverDevices:
         else:
             self._reset_response_time_counter()
             self.speaker.play_start_record()
+        self.speaker.stop_playback()
 
     def _enter_silent_mode(self):
         """Enter silent mode where wake words are disabled."""

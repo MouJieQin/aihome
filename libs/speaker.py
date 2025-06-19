@@ -170,6 +170,10 @@ class Speaker(metaclass=SingletonMeta):
         """Close the Pygame mixer."""
         pygame.mixer.quit()
 
+    def stop_playback(self):
+        """Stop assistant playback channels."""
+        self.audio_channel_assistant_synthesizer.stop()
+
     async def keep_alive_playback(self):
         while True:
             self.keep_alive_channel.play(self.silent_sound, loops=5)  # 循环播放
@@ -256,7 +260,7 @@ class Speaker(metaclass=SingletonMeta):
         """Set the volume based on the current time."""
         volume = self._get_volume_based_on_time()
         self._set_volume_imple(self.audio_channel_assistant_synthesizer, volume)
-        self._set_volume_imple(self.audio_channel_system_prompt, volume)
+        self._set_volume_imple(self.audio_channel_system_prompt, 1)
 
     def speak_text(self, text: str):
         """Speak the given text in real-time."""
