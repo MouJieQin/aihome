@@ -60,9 +60,9 @@ class AIserver(AIserverDevices):
         self.speaker.play_send_message()
         response = self.ai_assistant.auto_chat(input)
         logger.info(f"Assistant response: {response}")
-        self.speaker.play_receive_response()
         if response:
             self._handle_ai_assistant_response(response)
+        self.speaker.play_receive_response()
         return response
 
     def _get_more_info(
