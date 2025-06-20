@@ -55,7 +55,7 @@ class HomeAssistantDevice:
                     self.speaker.speak_text("Home Assistant启动失败，请检查配置")
                     logger.error("Home Assistant启动失败，请检查配置")
             else:
-                for _ in range(3):
+                for _ in range(5):
                     time.sleep(5)
                     if self._call_service_imple(domain, service, data):
                         return

@@ -1,5 +1,6 @@
 import azure.cognitiveservices.speech as speechsdk
 from typing import Dict, Callable
+from libs.log_config import logger
 
 
 class Recognizer:
@@ -76,19 +77,21 @@ class Recognizer:
         size = len(cur_recognized_text)
         if size > self.max_len_recogized_words:
             self.max_len_recogized_words = size
-        print("RECOGNIZED: {}".format(cur_recognized_text))
+        logger.info("RECOGNIZED: {}".format(cur_recognized_text))
         if not self.is_stopping_recognizer:
             self.recognized_callback(cur_recognized_text)
 
     def _azure_auto_stt_recognizer_session_started(self, evt):
-        print(f"SESSION STARTED : {evt}")
+        logger.info(f"SESSION STARTED : {evt}")
 
     def _azure_auto_stt_recognizer_session_stopped(self, evt):
-        print(f"SESSION STOPPED : {evt}")
+        logger.info(f"SESSION STOPPED : {evt}")
 
     def _azure_auto_stt_recognizer_canceled(self, evt):
+        logger.info(f"SESSION CANCELED : {evt}")
         detailed_reason = evt.result.cancellation_details.reason
         if detailed_reason == speechsdk.CancellationReason.EndOfStream:
+            logger.warning(f"SESSION CANCELED : {detailed_reason}")
             self._init_recognizer()
         else:
-            print(f"SESSION CANCELED : {detailed_reason}")
+            logger.warning(f"SESSION CANCELED : {detailed_reason}")
