@@ -99,7 +99,8 @@ class AIserverDevices:
     def _awake_callback(self):
         if not self.porcupine_manager.is_awaked():
             self.activate_keyword_recognizers()
-            self.acquire_json_states_of_all_devices_async()
+            self._json_states_of_all_devices = "{}"
+            # self.acquire_json_states_of_all_devices_async()
         else:
             self._reset_response_time_counter()
             self.speaker.play_start_record()
@@ -379,18 +380,19 @@ class AIserverDevices:
                     await asyncio.sleep(10)
                 else:
                     temp_stdev = result["temperature"]["stdev"]
-                    if temp_stdev < 0.05:
+                    if temp_stdev < 0.045:
                         await asyncio.sleep(15)
                         self.speaker.play_receive_response()
                         self.speaker.speak_text(
-                            "当前室内温度稳定在{:.1f}摄氏度，空气湿度{:.1f}%。空调将进入健康和静音模式，吊扇速度降至最低。".format(
+                            "当前室内温度稳定在{:.1f}摄氏度，空气湿度{:.1f}%。空调将进入健康和静音模式，吊扇速度降至第四档。".format(
                                 result["temperature"]["mean"],
                                 result["humidity"]["mean"],
                             )
                         )
                         await asyncio.sleep(1)
                         self.climate_bedroom.default_cool_mode()
-                        self.light_bedroom.adjust_fan_speed_to_min()
+                        self.light_bedroom.adjust_fan_speed_to_fourth()
+                        # self.light_bedroom.adjust_fan_speed_to_min()
                         break
                 await asyncio.sleep(30)
 
