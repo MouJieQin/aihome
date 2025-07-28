@@ -162,9 +162,9 @@ class Speaker(metaclass=SingletonMeta):
         self.audio_channel_system_prompt = pygame.mixer.Channel(1)
 
         self.keep_alive_channel = pygame.mixer.Channel(2)
-        self.keep_alive_channel.set_volume(0.01)
+        self.keep_alive_channel.set_volume(0.1)
         self.silent_sound = mixer.Sound(self.audio_files["send_message"])
-        self.silent_sound.set_volume(0.01)
+        self.silent_sound.set_volume(0.1)
 
     def close(self):
         """Close the Pygame mixer."""
@@ -244,11 +244,11 @@ class Speaker(metaclass=SingletonMeta):
         if hour < 8 or hour >= 23:
             return 0.3
         elif 8 <= hour < 12:
-            return 0.8
+            return 0.6
         elif 12 <= hour < 16 or 21 <= hour < 23:
             return 0.5
         else:
-            return 0.8
+            return 0.6
 
     def _set_volume_imple(self, channel, volume: float, diff_allowed: float = 0.1):
         """Set the volume of a channel if it differs by more than the specified amount."""
