@@ -27,32 +27,6 @@ class PorcupineManager:
         self._init_porcupine()
         self._init_silent_mode_recognizer()
 
-    def _init_porcupine(self):
-        """Initialize Porcupine for wake word detection."""
-        config_porcupine = self.configure["porcupine"]
-        config_microphone = self.configure["microphone"]
-        self.porcupine = pvporcupine.create(
-            access_key=config_porcupine["access_key"],
-            model_path=config_porcupine["model_path"],
-            keyword_paths=[config_porcupine["keyword_paths"]],
-        )
-        self.pa = pyaudio.PyAudio()
-        input_device_name = config_microphone["ai_assistant"]["input_device_name"]
-        input_device_index = self._get_input_device_index_by_name(input_device_name)
-        if input_device_index is None:
-            logger.error(f"未找到名为 {input_device_name} 的输入设备")
-            exit(1)
-            return
-        self.audio_stream = self.pa.open(
-            rate=self.porcupine.sample_rate,
-            channels=1,
-            format=pyaudio.paInt16,
-            input=True,
-            input_device_index=input_device_index,
-            frames_per_buffer=self.porcupine.frame_length,
-        )
-        self._start_ai_awake_thread()
-
     def _get_input_device_index_by_name(self, device_name: str) -> Optional[int]:
         """Get the input device index by its name."""
         for i in range(self.pa.get_device_count()):
@@ -64,25 +38,113 @@ class PorcupineManager:
                 return i
         return None
 
+    def _init_porcupine(self):
+        """Initialize Porcupine with optimized parameters for better accuracy."""
+        config_porcupine = self.configure["porcupine"]
+        config_microphone = self.configure["microphone"]
+
+        # 增加灵敏度控制，降低误唤醒概率
+        self.porcupine = pvporcupine.create(
+            access_key=config_porcupine["access_key"],
+            model_path=config_porcupine["model_path"],
+            keyword_paths=[config_porcupine["keyword_paths"]],
+            sensitivities=[0.5],  # 调整唤醒词灵敏度
+        )
+
+        self.pa = pyaudio.PyAudio()
+        input_device_name = config_microphone["ai_assistant"]["input_device_name"]
+        input_device_index = self._get_input_device_index_by_name(input_device_name)
+
+        if input_device_index is None:
+            logger.error(f"未找到名为 {input_device_name} 的输入设备")
+            exit(1)
+
+        # 优化音频流参数
+        self.audio_stream = self.pa.open(
+            rate=self.porcupine.sample_rate,
+            channels=1,
+            format=pyaudio.paInt16,
+            input=True,
+            input_device_index=input_device_index,
+            frames_per_buffer=self.porcupine.frame_length,
+            start=False,  # 不立即启动流，在需要时启动
+        )
+
+        # 添加背景噪声适应机制
+        self._noise_threshold = self._calculate_noise_threshold()
+        self._start_ai_awake_thread()
+
+    def _calculate_noise_threshold(self, sample_duration=2.0):
+        """计算环境本底噪声阈值"""
+        if not self.audio_stream.is_active():
+            self.audio_stream.start_stream()
+
+        # 采集环境噪声样本
+        noise_samples = []
+        sample_frames = int(
+            self.porcupine.sample_rate * sample_duration / self.porcupine.frame_length
+        )
+
+        for _ in range(sample_frames):
+            pcm = self.audio_stream.read(
+                self.porcupine.frame_length, exception_on_overflow=False
+            )
+            pcm = struct.unpack_from("h" * self.porcupine.frame_length, pcm)
+            # 计算样本能量
+            energy = sum(abs(x) for x in pcm) / len(pcm)
+            noise_samples.append(energy)
+
+        # 计算噪声阈值（取平均值的1.2倍作为基准）
+        avg_energy = sum(noise_samples) / len(noise_samples)
+        threshold = avg_energy * 1.2
+
+        if not self._is_in_silent_mode and not self.audio_stream.is_active():
+            self.audio_stream.stop_stream()
+
+        return threshold
+
     def _start_ai_awake_thread(self) -> threading.Thread:
-        """Start the thread for wake word detection."""
+        """Start the thread for wake word detection with improved accuracy logic."""
 
         def run_ai_awake():
-            """Run the wake word detection loop."""
-            while True:
-                if self._is_in_silent_mode:
-                    time.sleep(3)
-                else:
-                    if self.porcupine is None:
-                        return
-                    pcm = self.audio_stream.read(
-                        self.porcupine.frame_length, exception_on_overflow=False
-                    )
-                    pcm = struct.unpack_from("h" * self.porcupine.frame_length, pcm)
-                    result = self.porcupine.process(pcm)
-                    if result >= 0:
-                        logger.info(f"检测到唤醒词: あすな")
-                        self.awake_callback()
+            """Run the wake word detection loop with noise filtering and confirmation."""
+            try:
+                if not self.audio_stream.is_active():
+                    self.audio_stream.start_stream()
+                while True:
+                    if self._is_in_silent_mode:
+                        time.sleep(0.5)  # 静默模式下减少CPU占用
+                    else:
+                        if self.porcupine is None:
+                            break
+                        try:
+                            # 读取音频数据
+                            pcm = self.audio_stream.read(
+                                self.porcupine.frame_length, exception_on_overflow=False
+                            )
+                            pcm = struct.unpack_from(
+                                "h" * self.porcupine.frame_length, pcm
+                            )
+                            result = self.porcupine.process(pcm)
+                            if result >= 0:
+                                logger.info(f"确认检测到唤醒词: あすな")
+                                self.awake_callback()
+
+                            # # 能量检测过滤背景噪声
+                            # current_energy = sum(abs(x) for x in pcm) / len(pcm)
+                            # # 低于噪声阈值，可能是背景噪声
+                            # if current_energy > self._noise_threshold:
+                            #     # 处理音频帧
+                            #     result = self.porcupine.process(pcm)
+                            #     if result >= 0:
+                            #         logger.info(f"确认检测到唤醒词: あすな")
+                            #         self.awake_callback()
+                        except Exception as e:
+                            logger.warning(f"音频处理异常: {e}")
+                            time.sleep(0.1)  # 短暂暂停恢复
+            finally:
+                if self.audio_stream.is_active():
+                    self.audio_stream.stop_stream()
 
         thread = threading.Thread(target=run_ai_awake)
         thread.daemon = True
