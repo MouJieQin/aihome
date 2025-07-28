@@ -32,6 +32,7 @@ class AIserver(AIserverDevices):
         """Callback function for recognized words."""
         self.recognizer.stop_recognizer()
         if len(cur_recognized_text) > 1:
+            self._reset_response_time_counter(0)
             self.stop_keyword_recognizers()
             self._chat_with_ai_assistant(cur_recognized_text)
 
@@ -385,6 +386,7 @@ class AIserver(AIserverDevices):
                 "开关": {
                     "function": self.elec_controller.switch_controller,
                     "description": "目前控制电蚊香的开关",
+                    "hint": "用户可能输入文箱",
                     "args": {
                         "value": {
                             "type": "bool",

@@ -93,5 +93,7 @@ class Recognizer:
         if detailed_reason == speechsdk.CancellationReason.EndOfStream:
             logger.warning(f"SESSION CANCELED : {detailed_reason}")
             self._init_recognizer()
+        elif detailed_reason == speechsdk.CancellationReason.Error:
+            self._init_recognizer()
         else:
             logger.warning(f"SESSION CANCELED : {detailed_reason}")
