@@ -52,7 +52,7 @@ class AIserverDevices:
     def _init_vm_manager(self):
         """Initialize the VirtualBox manager and start the VM."""
         self.ha_vm_manager = VirtualBoxController(self.configure)
-        self.ha_vm_manager.start_vm()
+        # self.ha_vm_manager.start_vm()
 
     def _init_devices(self):
         """Initialize all smart devices."""
@@ -153,6 +153,7 @@ class AIserverDevices:
             self.configure, self._task_scheduler_callback
         )
         self.task_scheduler.start()
+        self.task_scheduler.delete_overdue_completed_tasks()
 
     def _add_scheduler_task(
         self,

@@ -183,6 +183,20 @@ class TaskScheduler:
             self._trigger_reload()
         return deleted
 
+    def delete_overdue_completed_tasks(self) -> bool:
+        """删除所有已完成或过期任务"""
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM tasks WHERE status = ? OR status = ?",
+                (self.STATUS_COMPLETED, self.STATUS_OVERDUE),
+            )
+            conn.commit()
+            deleted = cursor.rowcount > 0
+        if deleted:
+            self._trigger_reload()
+        return deleted
+
     def activate_task(self, task_id: int, active: bool = True) -> bool:
         """激活或暂停指定ID的任务
 
