@@ -132,7 +132,7 @@ class AIserver(AIserverDevices):
         return {
             "获取更多信息": {
                 "function": self._auto_chat_with_ai_assistant_with_more_info,
-                "description": "当あすな需要获取更多的信息才能完成用户指令时，あすな可以主动调用该函数将该信息发送给あすな做进一步处理。",
+                "description": "当あすな需要获取更多的信息才能完成用户指令时，あすな可以主动调用使用该模块将需要的信息发送给あすな做进一步处理。",
                 "args": {
                     "more_info_want_to_know": {
                         "type": "list[str]",
