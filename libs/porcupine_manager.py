@@ -24,7 +24,11 @@ class PorcupineManager:
         self.awake_callback = awake_callback
         self.enter_silent_mode_callback = enter_silent_mode_callback
         self.exit_silent_mode_callback = exit_silent_mode_callback
-        self._init_porcupine()
+        self.mode = "azure"
+        if self.mode == "porcupine":
+            self._init_porcupine()
+        elif self.mode == "azure":
+            self._init_awake_recognizer()
         self._init_silent_mode_recognizer()
 
     def _get_input_device_index_by_name(self, device_name: str) -> Optional[int]:
@@ -153,12 +157,13 @@ class PorcupineManager:
 
     def close_porcupine(self):
         """Close Porcupine resources."""
-        if self.pa is not None:
-            self.pa.terminate()
-        if self.audio_stream is not None:
-            self.audio_stream.close()
-        if self.porcupine is not None:
-            self.porcupine.delete()
+        if self.mode == "porcupine":
+            if self.pa is not None:
+                self.pa.terminate()
+            if self.audio_stream is not None:
+                self.audio_stream.close()
+            if self.porcupine is not None:
+                self.porcupine.delete()
 
     def set_awake(self, is_awake: bool):
         """Set the activation state of the AI assistant."""
@@ -175,6 +180,42 @@ class PorcupineManager:
     def is_in_silent_mode(self) -> bool:
         """Check if the AI assistant is in silent mode."""
         return self._is_in_silent_mode
+
+    def _init_awake_recognizer(self):
+        """Initialize the wake word recognizer."""
+        self.wake_word_model = speechsdk.KeywordRecognitionModel(
+            "./voices/models/wake-word.table"
+        )
+        self.start_recognize_wake_word()
+
+    def _create_wake_word_recognizer(self) -> speechsdk.KeywordRecognizer:
+        """Create a silent mode recognizer."""
+        wake_word_recognizer = speechsdk.KeywordRecognizer()
+        wake_word_recognizer.canceled.connect(
+            lambda evt: logger.info(f"Wake word recognizer canceled: {evt}")
+        )
+        wake_word_recognizer.recognized.connect(self._create_wake_word_bk())
+        return wake_word_recognizer
+
+    def start_recognize_wake_word(self):
+        """Start recognizing the wake word."""
+        self.wake_word_recognizer = self._create_wake_word_recognizer()
+        self.wake_word_recognizer.recognize_once_async(self.wake_word_model)
+
+    def _create_wake_word_bk(self) -> Callable:
+        """Create a callback function for wake word activation."""
+
+        def callback(evt):
+            """Handle the event when the wake word is recognized."""
+            if evt.result.reason == speechsdk.ResultReason.RecognizedKeyword:
+                keyword = evt.result.text
+                logger.info(f"确认检测到唤醒词: {keyword}")
+                self.awake_callback()
+                self.start_recognize_wake_word()
+            else:
+                logger.debug(f"Keyword not recognized: {evt.result.reason}")
+
+        return callback
 
     def _create_silent_mode_bk(self) -> Callable:
         """Create a callback function for silent mode activation."""
