@@ -66,12 +66,12 @@ class ClimateBedroom(HomeAssistantDevice):
         super()._call_service(domain, service, data)
         sleep(0.5)  # Pause for 0.5 seconds to avoid overwhelming the API
 
-    def fast_cool_mode(self, temperature: int = 25) -> None:
+    def fast_cool_mode(self, temperature: int = 26) -> None:
         """
         Activates the fast cool mode for the bedroom climate device.
 
         Args:
-            temperature (int, optional): The desired temperature. Defaults to 25.
+            temperature (int, optional): The desired temperature. Defaults to 26.
         """
         self.set_temperature(temperature)
         self.set_preset_mode("boost")
@@ -82,15 +82,35 @@ class ClimateBedroom(HomeAssistantDevice):
         self.turn_off_fresh_air_mode()
         self.turn_off_quiet_mode()
 
-    def default_cool_mode(self) -> None:
+    def normal_cool_mode(self, temperature: int = 26) -> None:
+        """
+        Activates the normal cool mode for the bedroom climate device.
+
+        Args:
+            temperature (int, optional): The desired temperature. Defaults to 26.
+        """
+        self.set_temperature(temperature)
+        self.set_preset_mode("none")
+        # self.set_preset_mode("eco")
+        self.set_fan_mode("medium")
+        self.set_swing_mode("off")
+        self.turn_off_health_mode()
+        self.turn_off_fresh_air_mode()
+        self.turn_off_quiet_mode()
+
+    def default_cool_mode(self, temperature: int = 26) -> None:
         """
         Activates the default mode for the bedroom climate device.
         """
+        self.set_temperature(temperature)
         self.turn_on_health_mode()
         self.turn_on_quiet_mode()
+        self.set_hvac_mode("cool")
         self.set_preset_mode("none")
         # self.set_preset_mode("eco")
         self.set_fan_mode("low")
+        self.set_swing_mode("off")
+        self.turn_off_fresh_air_mode()
 
     def set_preset_mode(self, preset_mode: str) -> None:
         """

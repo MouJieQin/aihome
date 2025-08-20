@@ -321,7 +321,7 @@ class AIserver(AIserverDevices):
                     },
                 },
                 "自定义模式": {
-                    "制冷": {
+                    "自动制冷": {
                         "function": self.auto_cool_mode,
                         "description": "先全速制冷，通过室内温度的标准差判断温度稳定后自动进入健康模式和静音模式。",
                         "args": {
@@ -337,7 +337,46 @@ class AIserver(AIserverDevices):
                                 "is_necessary": False,
                             },
                         },
-                    }
+                    },
+                    "全速制冷": {
+                        "function": self.fast_cool_mode,
+                        "description": "全速制冷模式，直到达到目标温度。",
+                        "args": {
+                            "temperature": {
+                                "type": "int",
+                                "description": "目标温度，单位为摄氏度",
+                                "is_necessary": False,
+                                "default": 26,
+                                "range": "[8,30]",
+                            }
+                        },
+                    },
+                    "正常制冷": {
+                        "function": self.normal_cool_mode,
+                        "description": "正常制冷模式，直到达到目标温度。",
+                        "args": {
+                            "temperature": {
+                                "type": "int",
+                                "description": "目标温度，单位为摄氏度",
+                                "is_necessary": False,
+                                "default": 26,
+                                "range": "[8,30]",
+                            }
+                        },
+                    },
+                    "默认制冷": {
+                        "function": self.default_cool_mode,
+                        "description": "默认制冷模式，保持室内温度。",
+                        "args": {
+                            "temperature": {
+                                "type": "int",
+                                "description": "目标温度，单位为摄氏度",
+                                "is_necessary": False,
+                                "default": 26,
+                                "range": "[8,30]",
+                            }
+                        },
+                    },
                 },
                 "风速": {
                     "function": self.climate_bedroom.set_fan_mode,

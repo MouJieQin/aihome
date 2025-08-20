@@ -344,6 +344,38 @@ class AIserverDevices:
             cls=self.DateTimeEncoder,
         )
 
+    def fast_cool_mode(self, temperature: int = 26) -> None:
+        """
+        Activates the fast cool mode for the bedroom climate device.
+
+        Args:
+            temperature (int, optional): The desired temperature. Defaults to 26.
+        """
+        self.climate_bedroom.fast_cool_mode(temperature=temperature)
+        self.light_bedroom.adjust_fan_speed_to_max()
+
+
+    def normal_cool_mode(self, temperature: int = 26) -> None:
+        """
+        Activates the normal cool mode for the bedroom climate device.
+
+        Args:
+            temperature (int, optional): The desired temperature. Defaults to 26.
+        """
+        self.climate_bedroom.normal_cool_mode(temperature=temperature)
+        self.light_bedroom.adjust_fan_speed_to_max()
+
+
+    def default_cool_mode(self, temperature: int = 26) -> None:
+        """
+        Activates the default cool mode for the bedroom climate device.
+
+        Args:
+            temperature (int, optional): The desired temperature. Defaults to 26.
+        """
+        self.climate_bedroom.default_cool_mode(temperature=temperature)
+        self.light_bedroom.adjust_fan_speed_to_fourth()
+
     def get_states_of_all_devices(self) -> Dict:
         """Get states of all devices."""
         return {
